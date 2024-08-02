@@ -162,12 +162,12 @@ public abstract class PolarisStorageConfigurationInfo {
               if (!allowEscape && baseLocation != null) {
                 LOGGER.debug(
                     "Not allowing unstructured table location for entity: {}",
-                    entityPath.getLast().getName());
+                    entityPath.get(entityPath.size() - 1).getName());
                 return new StorageConfigurationOverride(configInfo, List.of(baseLocation));
               } else {
                 LOGGER.debug(
                     "Allowing unstructured table location for entity: {}",
-                    entityPath.getLast().getName());
+                    entityPath.get(entityPath.size() - 1).getName());
                 return configInfo;
               }
             });
