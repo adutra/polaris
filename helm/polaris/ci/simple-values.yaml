@@ -20,4 +20,4 @@
 image:
   repository: polaris
   tag: latest
-  pullPolicy: IfNotPresent
+  pullPolicy: Never

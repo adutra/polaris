@@ -21,6 +21,8 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ include "polaris.fullname" . }}
+  annotations:
+    foo: bar
   labels:
     {{- include "polaris.labels" . | nindent 4 }}
     {{- if .Values.podLabels }}
