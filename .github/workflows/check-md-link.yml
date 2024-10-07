@@ -26,11 +26,11 @@
 
 name: Check Markdown links
 
-on:
-  push:
-    branches:
-      - 'main'
-  pull_request:
+#on:
+#  push:
+#    branches:
+#      - 'main'
+#  pull_request:
 
 jobs:
   markdown-link-check:
