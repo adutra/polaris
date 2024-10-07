@@ -48,10 +48,10 @@ jobs:
         with:
           version: 'v3.16.0'
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.x'
+#      - name: Set up Python
+#        uses: actions/setup-python@v5
+#        with:
+#          python-version: '3.x'
 
       - name: Set up chart-testing
         uses: helm/chart-testing-action@v2.6.1
