@@ -29,3 +29,6 @@ sources:
 keywords:
   - polaris
   - iceberg
+maintainers:
+  - name: MonkeyCanCode
+  - name: adutra
