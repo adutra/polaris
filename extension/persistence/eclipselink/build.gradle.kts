@@ -23,6 +23,7 @@ fun isValidDep(dep: String): Boolean {
 }
 
 plugins {
+  alias(libs.plugins.quarkus)
   id("polaris-server")
   `java-library`
 }
@@ -30,8 +31,8 @@ plugins {
 dependencies {
   implementation(project(":polaris-core"))
   implementation(libs.eclipselink)
-  implementation(platform(libs.dropwizard.bom))
-  implementation("io.dropwizard:dropwizard-jackson")
+  implementation(enforcedPlatform(libs.quarkus.bom))
+
   val eclipseLinkDeps: String? = project.findProperty("eclipseLinkDeps") as String?
   eclipseLinkDeps?.let {
     val dependenciesList = it.split(",")
@@ -46,14 +47,20 @@ dependencies {
   }
 
   compileOnly(libs.jetbrains.annotations)
+  compileOnly(libs.jakarta.enterprise.cdi.api)
+  compileOnly(libs.jakarta.inject.api)
+  compileOnly("io.quarkus:quarkus-arc")
+  compileOnly("org.eclipse.microprofile.config:microprofile-config-api")
+  compileOnly(platform(libs.jackson.bom))
+  compileOnly("com.fasterxml.jackson.core:jackson-annotations")
+  compileOnly("com.fasterxml.jackson.core:jackson-core")
 
   testImplementation(libs.h2)
   testImplementation(testFixtures(project(":polaris-core")))
 
   testImplementation(platform(libs.junit.bom))
-  testImplementation("org.junit.jupiter:junit-jupiter")
-  testImplementation(libs.assertj.core)
-  testImplementation(libs.mockito.core)
+  testImplementation(libs.bundles.junit.testing)
+  testRuntimeOnly("org.junit.jupiter:junit-jupiter")
   testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
@@ -65,3 +72,7 @@ tasks.register<Jar>("archiveConf") {
 }
 
 tasks.named("test") { dependsOn("archiveConf") }
+
+tasks.named("compileJava") { dependsOn("compileQuarkusGeneratedSourcesJava") }
+
+tasks.named("sourcesJar") { dependsOn("compileQuarkusGeneratedSourcesJava") }

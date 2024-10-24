@@ -24,5 +24,11 @@ package org.apache.polaris.core.context;
  * prod), and/or account.
  */
 public interface RealmContext {
+
+  static RealmContext copyOf(RealmContext base) {
+    String realmIdentifier = base.getRealmIdentifier();
+    return () -> realmIdentifier;
+  }
+
   String getRealmIdentifier();
 }

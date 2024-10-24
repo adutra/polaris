@@ -18,14 +18,12 @@
  */
 package org.apache.polaris.service.catalog;
 
-import static org.apache.polaris.service.context.DefaultContextResolver.REALM_PROPERTY_KEY;
+import static org.apache.polaris.service.context.DefaultRealmContextResolver.REALM_PROPERTY_KEY;
 
-import io.dropwizard.testing.ConfigOverride;
-import io.dropwizard.testing.ResourceHelpers;
-import io.dropwizard.testing.junit5.DropwizardAppExtension;
-import io.dropwizard.testing.junit5.DropwizardExtensionsSupport;
+import jakarta.inject.Inject;
 import jakarta.ws.rs.core.Response;
-import java.io.IOException;
+import java.lang.reflect.Field;
+import java.nio.file.Path;
 import java.util.Map;
 import org.apache.iceberg.rest.RESTCatalog;
 import org.apache.iceberg.view.ViewCatalogTests;
@@ -34,75 +32,59 @@ import org.apache.polaris.core.admin.model.Catalog;
 import org.apache.polaris.core.admin.model.PolarisCatalog;
 import org.apache.polaris.core.admin.model.StorageConfigInfo;
 import org.apache.polaris.core.entity.CatalogEntity;
-import org.apache.polaris.service.PolarisApplication;
-import org.apache.polaris.service.config.PolarisApplicationConfig;
-import org.apache.polaris.service.test.PolarisConnectionExtension;
-import org.apache.polaris.service.test.PolarisConnectionExtension.PolarisToken;
-import org.apache.polaris.service.test.PolarisRealm;
-import org.apache.polaris.service.test.SnowmanCredentialsExtension;
-import org.apache.polaris.service.test.SnowmanCredentialsExtension.SnowmanCredentials;
-import org.apache.polaris.service.test.TestEnvironment;
-import org.apache.polaris.service.test.TestEnvironmentExtension;
+import org.apache.polaris.service.test.PolarisIntegrationTestFixture;
+import org.apache.polaris.service.test.PolarisIntegrationTestHelper;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.TestInfo;
-import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Import the full core Iceberg catalog tests by hitting the REST service via the RESTCatalog
  * client.
  */
-@ExtendWith({
-  DropwizardExtensionsSupport.class,
-  TestEnvironmentExtension.class,
-  PolarisConnectionExtension.class,
-  SnowmanCredentialsExtension.class
-})
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
 public abstract class PolarisRestCatalogViewIntegrationTest extends ViewCatalogTests<RESTCatalog> {
-  private static final DropwizardAppExtension<PolarisApplicationConfig> EXT =
-      new DropwizardAppExtension<>(
-          PolarisApplication.class,
-          ResourceHelpers.resourceFilePath("polaris-server-integrationtest.yml"),
-          ConfigOverride.config(
-              "server.applicationConnectors[0].port",
-              "0"), // Bind to random port to support parallelism
-          ConfigOverride.config(
-              "server.adminConnectors[0].port", "0")); // Bind to random port to support parallelism
 
+  @Inject PolarisIntegrationTestHelper helper;
+
+  private PolarisIntegrationTestFixture fixture;
   private RESTCatalog restCatalog;
 
   @BeforeAll
-  public static void setup(@PolarisRealm String realm) throws IOException {
-    // Set up test location
-    PolarisConnectionExtension.createTestDir(realm);
+  public void beforeAll(TestInfo testInfo) {
+    Assumptions.assumeFalse(shouldSkip());
+    fixture = helper.createFixture(testInfo);
   }
 
   @BeforeEach
-  public void before(
-      TestInfo testInfo,
-      PolarisToken adminToken,
-      SnowmanCredentials snowmanCredentials,
-      @PolarisRealm String realm,
-      TestEnvironment testEnv) {
+  public void setUpTempDir(@TempDir Path tempDir) throws Exception {
+    // see https://github.com/quarkusio/quarkus/issues/13261
+    Field field = ViewCatalogTests.class.getDeclaredField("tempDir");
+    field.setAccessible(true);
+    field.set(this, tempDir);
+  }
 
-    Assumptions.assumeFalse(shouldSkip());
-
-    String userToken = adminToken.token();
+  @BeforeEach
+  void before(TestInfo testInfo) {
     testInfo
         .getTestMethod()
         .ifPresent(
             method -> {
-              String catalogName = method.getName() + testEnv.testId();
+              String catalogName = method.getName();
               try (Response response =
-                  testEnv
-                      .apiClient()
+                  fixture
+                      .client
                       .target(
                           String.format(
-                              "%s/api/management/v1/catalogs/%s", testEnv.baseUri(), catalogName))
+                              "http://localhost:%d/api/management/v1/catalogs/%s",
+                              fixture.localPort, catalogName))
                       .request("application/json")
-                      .header("Authorization", "Bearer " + userToken)
-                      .header(REALM_PROPERTY_KEY, realm)
+                      .header("Authorization", "Bearer " + fixture.adminToken)
+                      .header(REALM_PROPERTY_KEY, fixture.realm)
                       .get()) {
                 if (response.getStatus() == Response.Status.OK.getStatusCode()) {
                   // Already exists! Must be in a parameterized test.
@@ -138,16 +120,15 @@ public abstract class PolarisRestCatalogViewIntegrationTest extends ViewCatalogT
                       .setProperties(props)
                       .setStorageConfigInfo(storageConfig)
                       .build();
-              restCatalog =
-                  TestUtil.createSnowmanManagedCatalog(
-                      testEnv.apiClient(),
-                      testEnv.baseUri().toString(),
-                      adminToken,
-                      snowmanCredentials,
-                      realm,
-                      catalog,
-                      Map.of());
+              restCatalog = TestUtil.createSnowmanManagedCatalog(fixture, catalog, Map.of());
             });
+  }
+
+  @AfterAll
+  public void tearDown() {
+    if (fixture != null) {
+      fixture.destroy();
+    }
   }
 
   /**

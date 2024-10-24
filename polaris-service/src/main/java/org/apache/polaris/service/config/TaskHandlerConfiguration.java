@@ -18,35 +18,18 @@
  */
 package org.apache.polaris.service.config;
 
-import com.google.common.util.concurrent.ThreadFactoryBuilder;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadFactory;
+import io.smallrye.config.ConfigMapping;
+import io.smallrye.config.WithDefault;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 
-public class TaskHandlerConfiguration {
-  private int poolSize = 10;
-  private boolean fixedSize = true;
-  private String threadNamePattern = "taskHandler-%d";
+@ConfigMapping(prefix = "polaris.tasks")
+public interface TaskHandlerConfiguration {
 
-  public void setPoolSize(int poolSize) {
-    this.poolSize = poolSize;
-  }
+  @WithDefault("-1")
+  @ConfigProperty(name = "max-concurrent-tasks")
+  int maxConcurrentTasks();
 
-  public void setFixedSize(boolean fixedSize) {
-    this.fixedSize = fixedSize;
-  }
-
-  public void setThreadNamePattern(String threadNamePattern) {
-    this.threadNamePattern = threadNamePattern;
-  }
-
-  public ExecutorService executorService() {
-    return fixedSize
-        ? Executors.newFixedThreadPool(poolSize, threadFactory())
-        : Executors.newCachedThreadPool(threadFactory());
-  }
-
-  private ThreadFactory threadFactory() {
-    return new ThreadFactoryBuilder().setNameFormat(threadNamePattern).setDaemon(true).build();
-  }
+  @WithDefault("-1")
+  @ConfigProperty(name = "max-queued-tasks")
+  int maxQueuedTasks();
 }

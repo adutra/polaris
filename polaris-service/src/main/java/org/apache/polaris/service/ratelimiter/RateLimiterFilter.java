@@ -18,30 +18,29 @@
  */
 package org.apache.polaris.service.ratelimiter;
 
+import jakarta.annotation.Priority;
+import jakarta.inject.Inject;
+import jakarta.ws.rs.Priorities;
 import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.container.ContainerRequestFilter;
 import jakarta.ws.rs.core.Response;
-import java.io.IOException;
-import javax.ws.rs.ext.Provider;
+import jakarta.ws.rs.ext.Provider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /** Request filter that returns a 429 Too Many Requests if the rate limiter says so */
+@Priority(Priorities.AUTHORIZATION + 1)
 @Provider
 public class RateLimiterFilter implements ContainerRequestFilter {
   private static final Logger LOGGER = LoggerFactory.getLogger(RateLimiterFilter.class);
 
-  private final RateLimiter rateLimiter;
-
-  public RateLimiterFilter(RateLimiter rateLimiter) {
-    this.rateLimiter = rateLimiter;
-  }
+  @Inject RateLimiter rateLimiter;
 
   /** Returns a 429 if the rate limiter says so. Otherwise, forwards the request along. */
   @Override
-  public void filter(ContainerRequestContext ctx) throws IOException {
+  public void filter(ContainerRequestContext containerRequestContext) {
     if (!rateLimiter.tryAcquire()) {
-      ctx.abortWith(Response.status(Response.Status.TOO_MANY_REQUESTS).build());
+      containerRequestContext.abortWith(Response.status(Response.Status.TOO_MANY_REQUESTS).build());
       LOGGER.atDebug().log("Rate limiting request");
     }
   }

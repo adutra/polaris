@@ -33,7 +33,7 @@ public class DefaultConfigurationStoreTest {
     DefaultConfigurationStore defaultConfigurationStore =
         new DefaultConfigurationStore(Map.of("key1", 1, "key2", "value"));
     InMemoryPolarisMetaStoreManagerFactory metastoreFactory =
-        new InMemoryPolarisMetaStoreManagerFactory();
+        new InMemoryPolarisMetaStoreManagerFactory(null, null);
     PolarisCallContext callCtx =
         new PolarisCallContext(
             metastoreFactory.getOrCreateSessionSupplier(() -> "realm1").get(),
@@ -67,7 +67,7 @@ public class DefaultConfigurationStoreTest {
                 "realm2",
                 Map.of("key1", realm2KeyOneValue, "key2", realm2KeyTwoValue)));
     InMemoryPolarisMetaStoreManagerFactory metastoreFactory =
-        new InMemoryPolarisMetaStoreManagerFactory();
+        new InMemoryPolarisMetaStoreManagerFactory(null, null);
 
     // check realm1 values
     PolarisCallContext realm1Ctx =

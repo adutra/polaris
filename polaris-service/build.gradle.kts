@@ -17,14 +17,12 @@
  * under the License.
  */
 
-import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 import org.openapitools.generator.gradle.plugin.tasks.GenerateTask
 
 plugins {
+  alias(libs.plugins.quarkus)
   alias(libs.plugins.openapi.generator)
   id("polaris-server")
-  id("polaris-license-report")
-  id("polaris-shadow-jar")
   id("application")
 }
 
@@ -35,54 +33,44 @@ dependencies {
   implementation("org.apache.iceberg:iceberg-api")
   implementation("org.apache.iceberg:iceberg-core")
   implementation("org.apache.iceberg:iceberg-aws")
-  implementation(libs.hadoop.common) {
-    exclude("org.slf4j", "slf4j-reload4j")
-    exclude("org.slf4j", "slf4j-log4j12")
-    exclude("ch.qos.reload4j", "reload4j")
-    exclude("log4j", "log4j")
-    exclude("org.apache.zookeeper", "zookeeper")
-  }
-  implementation(libs.hadoop.hdfs.client)
 
-  implementation(platform(libs.dropwizard.bom))
-  implementation("io.dropwizard:dropwizard-core")
-  implementation("io.dropwizard:dropwizard-auth")
-  implementation("io.dropwizard:dropwizard-json-logging")
+  implementation(platform(libs.quarkus.bom))
+  implementation("io.quarkus:quarkus-logging-json")
+  implementation("io.quarkus:quarkus-rest")
+  implementation("io.quarkus:quarkus-rest-jackson")
+  implementation("io.quarkus:quarkus-reactive-routes")
+  implementation("io.quarkus:quarkus-hibernate-validator")
+  implementation("io.quarkus:quarkus-smallrye-health")
+  implementation("io.quarkus:quarkus-micrometer")
+  implementation("io.quarkus:quarkus-micrometer-registry-prometheus")
+  implementation("io.quarkus:quarkus-opentelemetry")
+  implementation("io.quarkus:quarkus-container-image-docker")
+  implementation("io.quarkus:quarkus-smallrye-context-propagation")
+
+  implementation("org.apache.commons:commons-lang3:3.17.0")
+
+  compileOnly(libs.jakarta.enterprise.cdi.api)
+  compileOnly(libs.jakarta.inject.api)
+  compileOnly(libs.jakarta.validation.api)
+  compileOnly(libs.jakarta.ws.rs.api)
 
   implementation(platform(libs.jackson.bom))
-  implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-xml")
   implementation("com.fasterxml.jackson.core:jackson-annotations")
-
-  implementation(platform(libs.opentelemetry.bom))
-  implementation("io.opentelemetry:opentelemetry-api")
-  implementation("io.opentelemetry:opentelemetry-sdk-trace")
-  implementation("io.opentelemetry:opentelemetry-exporter-logging")
-  implementation(libs.opentelemetry.semconv)
+  implementation("com.fasterxml.jackson.core:jackson-core")
+  implementation("com.fasterxml.jackson.core:jackson-databind")
 
   implementation(libs.caffeine)
   implementation(libs.guava)
   implementation(libs.slf4j.api)
 
-  implementation(libs.prometheus.metrics.exporter.servlet.jakarta)
-  implementation(platform(libs.micrometer.bom))
-  implementation("io.micrometer:micrometer-core")
-  implementation("io.micrometer:micrometer-registry-prometheus")
-
-  compileOnly(libs.swagger.annotations)
-  compileOnly(libs.jetbrains.annotations)
-  compileOnly(libs.spotbugs.annotations)
-  implementation(libs.swagger.jaxrs)
-  implementation(libs.javax.annotation.api)
+  implementation("org.jboss.slf4j:slf4j-jboss-logmanager")
 
   implementation(libs.hadoop.client.api)
+  implementation(libs.hadoop.client.runtime)
 
   implementation(libs.auth0.jwt)
 
-  implementation(libs.logback.core)
   implementation(libs.bouncycastle.bcprov)
-
-  compileOnly(libs.jetbrains.annotations)
-  compileOnly(libs.spotbugs.annotations)
 
   implementation(platform(libs.google.cloud.storage.bom))
   implementation("com.google.cloud:google-cloud-storage")
@@ -93,12 +81,12 @@ dependencies {
   implementation(platform(libs.azuresdk.bom))
   implementation("com.azure:azure-core")
 
+  compileOnly(libs.swagger.annotations)
+
+  implementation(libs.jakarta.servlet.api)
+
   testImplementation("org.apache.iceberg:iceberg-api:${libs.versions.iceberg.get()}:tests")
   testImplementation("org.apache.iceberg:iceberg-core:${libs.versions.iceberg.get()}:tests")
-  testImplementation("io.dropwizard:dropwizard-testing")
-  testImplementation(platform(libs.testcontainers.bom))
-  testImplementation("org.testcontainers:testcontainers")
-  testImplementation(libs.s3mock.testcontainers)
 
   testImplementation("org.apache.iceberg:iceberg-spark-3.5_2.12")
   testImplementation("org.apache.iceberg:iceberg-spark-extensions-3.5_2.12")
@@ -107,6 +95,7 @@ dependencies {
     exclude("org.apache.logging.log4j", "log4j-slf4j2-impl")
     exclude("org.apache.logging.log4j", "log4j-api")
     exclude("org.apache.logging.log4j", "log4j-1.2-api")
+    exclude("org.slf4j", "jul-to-slf4j")
   }
 
   testImplementation("software.amazon.awssdk:glue")
@@ -114,16 +103,28 @@ dependencies {
   testImplementation("software.amazon.awssdk:dynamodb")
 
   testImplementation(platform(libs.junit.bom))
-  testImplementation("org.junit.jupiter:junit-jupiter")
-  testImplementation(libs.assertj.core)
-  testImplementation(libs.mockito.core)
-  testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+  testImplementation(libs.bundles.junit.testing)
 
-  testRuntimeOnly(project(":polaris-eclipselink"))
-}
+  testImplementation(platform(libs.quarkus.bom))
+  testImplementation("io.quarkus:quarkus-junit5")
+  testImplementation("io.quarkus:quarkus-junit5-mockito")
+  testImplementation("io.quarkus:quarkus-rest-client")
+  testImplementation("io.quarkus:quarkus-rest-client-jackson")
+  testImplementation("io.rest-assured:rest-assured")
 
-if (project.properties.get("eclipseLink") == "true") {
-  dependencies { implementation(project(":polaris-eclipselink")) }
+  testImplementation(platform(libs.testcontainers.bom))
+  testImplementation("org.testcontainers:testcontainers")
+  testImplementation(libs.s3mock.testcontainers)
+
+  // required for PolarisSparkIntegrationTest
+  testImplementation(enforcedPlatform("org.scala-lang:scala-library:2.12.18"))
+  testImplementation(enforcedPlatform("org.scala-lang:scala-reflect:2.12.18"))
+  testImplementation(libs.javax.servlet.api)
+  testImplementation(
+    enforcedPlatform("org.antlr:antlr4-runtime:4.9.3")
+  ) // cannot be higher than 4.9.3
+
+  testImplementation("org.hawkular.agent:prometheus-scraper:0.23.0.Final")
 }
 
 openApiGenerate {
@@ -218,6 +219,11 @@ sourceSets {
   main { java { srcDir(project.layout.buildDirectory.dir("generated/src/main/java")) } }
 }
 
+tasks.withType(Test::class.java).configureEach {
+  systemProperty("java.util.logging.manager", "org.jboss.logmanager.LogManager")
+  addSparkJvmOptions()
+}
+
 tasks.named<Test>("test").configure {
   if (System.getenv("AWS_REGION") == null) {
     environment("AWS_REGION", "us-west-2")
@@ -227,46 +233,35 @@ tasks.named<Test>("test").configure {
   maxParallelForks = 4
 }
 
-tasks.register<JavaExec>("runApp").configure {
-  if (System.getenv("AWS_REGION") == null) {
-    environment("AWS_REGION", "us-west-2")
-  }
-  classpath = sourceSets["main"].runtimeClasspath
-  mainClass = "org.apache.polaris.service.PolarisApplication"
-  args("server", "$rootDir/polaris-server.yml")
+/**
+ * Adds the JPMS options required for Spark to run on Java 17, taken from the
+ * `DEFAULT_MODULE_OPTIONS` constant in `org.apache.spark.launcher.JavaModuleOptions`.
+ */
+fun JavaForkOptions.addSparkJvmOptions() {
+  jvmArgs =
+    (jvmArgs ?: emptyList()) +
+      listOf(
+        // Spark 3.3+
+        "-XX:+IgnoreUnrecognizedVMOptions",
+        "--add-opens=java.base/java.lang=ALL-UNNAMED",
+        "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED",
+        "--add-opens=java.base/java.lang.reflect=ALL-UNNAMED",
+        "--add-opens=java.base/java.io=ALL-UNNAMED",
+        "--add-opens=java.base/java.net=ALL-UNNAMED",
+        "--add-opens=java.base/java.nio=ALL-UNNAMED",
+        "--add-opens=java.base/java.util=ALL-UNNAMED",
+        "--add-opens=java.base/java.util.concurrent=ALL-UNNAMED",
+        "--add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED",
+        "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED",
+        "--add-opens=java.base/sun.nio.cs=ALL-UNNAMED",
+        "--add-opens=java.base/sun.security.action=ALL-UNNAMED",
+        "--add-opens=java.base/sun.util.calendar=ALL-UNNAMED",
+        "--add-opens=java.security.jgss/sun.security.krb5=ALL-UNNAMED",
+        // Spark 3.4+
+        "-Djdk.reflect.useDirectMethodHandle=false"
+      )
 }
 
-application { mainClass = "org.apache.polaris.service.PolarisApplication" }
+tasks.named("compileJava") { dependsOn("compileQuarkusGeneratedSourcesJava") }
 
-tasks.named<Jar>("jar") {
-  manifest { attributes["Main-Class"] = "org.apache.polaris.service.PolarisApplication" }
-}
-
-tasks.register<Jar>("testJar") {
-  archiveClassifier.set("tests")
-  from(sourceSets.test.get().output)
-}
-
-val shadowJar =
-  tasks.named<ShadowJar>("shadowJar") {
-    manifest { attributes["Main-Class"] = "org.apache.polaris.service.PolarisApplication" }
-    mergeServiceFiles()
-    isZip64 = true
-    finalizedBy("startScripts")
-  }
-
-val startScripts =
-  tasks.named<CreateStartScripts>("startScripts") {
-    classpath = files(provider { shadowJar.get().archiveFileName })
-  }
-
-tasks.register<Sync>("prepareDockerDist") {
-  into(project.layout.buildDirectory.dir("docker-dist"))
-  from(startScripts) { into("bin") }
-  from(shadowJar) { into("lib") }
-  doFirst { delete(project.layout.buildDirectory.dir("regtest-dist")) }
-}
-
-tasks.named("build").configure { dependsOn("prepareDockerDist") }
-
-tasks.named("assemble").configure { dependsOn("testJar") }
+tasks.named("sourcesJar") { dependsOn("compileQuarkusGeneratedSourcesJava") }

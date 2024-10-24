@@ -38,23 +38,21 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Base implementation of {@link DiscoverableAuthenticator} constructs a {@link
- * AuthenticatedPolarisPrincipal} from the token parsed by subclasses. The {@link
- * AuthenticatedPolarisPrincipal} is read from the {@link PolarisMetaStoreManager} for the current
- * {@link RealmContext}. If the token defines a non-empty set of scopes, only the principal roles
- * specified in the scopes will be active for the current principal. Only the grants assigned to
- * these roles will be active in the current request.
+ * Base implementation of {@link Authenticator} constructs a {@link AuthenticatedPolarisPrincipal}
+ * from the token parsed by subclasses. The {@link AuthenticatedPolarisPrincipal} is read from the
+ * {@link PolarisMetaStoreManager} for the current {@link RealmContext}. If the token defines a
+ * non-empty set of scopes, only the principal roles specified in the scopes will be active for the
+ * current principal. Only the grants assigned to these roles will be active in the current request.
  */
 public abstract class BasePolarisAuthenticator
-    implements DiscoverableAuthenticator<String, AuthenticatedPolarisPrincipal> {
+    implements Authenticator<String, AuthenticatedPolarisPrincipal> {
   public static final String PRINCIPAL_ROLE_ALL = "PRINCIPAL_ROLE:ALL";
   public static final String PRINCIPAL_ROLE_PREFIX = "PRINCIPAL_ROLE:";
   private static final Logger LOGGER = LoggerFactory.getLogger(BasePolarisAuthenticator.class);
 
-  protected MetaStoreManagerFactory metaStoreManagerFactory;
+  protected final MetaStoreManagerFactory metaStoreManagerFactory;
 
-  @Override
-  public void setMetaStoreManagerFactory(MetaStoreManagerFactory metaStoreManagerFactory) {
+  protected BasePolarisAuthenticator(MetaStoreManagerFactory metaStoreManagerFactory) {
     this.metaStoreManagerFactory = metaStoreManagerFactory;
   }
 

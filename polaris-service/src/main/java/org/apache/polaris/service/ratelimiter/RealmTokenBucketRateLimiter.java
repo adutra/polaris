@@ -18,35 +18,27 @@
  */
 package org.apache.polaris.service.ratelimiter;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.annotation.JsonTypeName;
-import java.time.Clock;
-import java.util.Map;
-import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
-import org.apache.polaris.core.context.CallContext;
+import io.smallrye.common.annotation.Identifier;
+import jakarta.enterprise.context.RequestScoped;
+import jakarta.inject.Inject;
 import org.apache.polaris.core.context.RealmContext;
-import org.jetbrains.annotations.VisibleForTesting;
 
 /**
- * Rate limiter that maps the request's realm identifier to its own TokenBucketRateLimiter, with its
- * own capacity.
+ * Rate limiter that maps the request's realm identifier to its own TokenBucket, with its own
+ * capacity.
  */
-@JsonTypeName("realm-token-bucket")
+@RequestScoped
+@Identifier("default")
 public class RealmTokenBucketRateLimiter implements RateLimiter {
-  private final long requestsPerSecond;
-  private final long windowSeconds;
-  private final Map<String, RateLimiter> perRealmLimiters;
 
-  @VisibleForTesting
-  @JsonCreator
+  private final TokenBucketManager tokenBucketManager;
+  private final RealmContext realmContext;
+
+  @Inject
   public RealmTokenBucketRateLimiter(
-      @JsonProperty("requestsPerSecond") final long requestsPerSecond,
-      @JsonProperty("windowSeconds") final long windowSeconds) {
-    this.requestsPerSecond = requestsPerSecond;
-    this.windowSeconds = windowSeconds;
-    this.perRealmLimiters = new ConcurrentHashMap<>();
+      TokenBucketManager tokenBucketManager, RealmContext realmContext) {
+    this.tokenBucketManager = tokenBucketManager;
+    this.realmContext = realmContext;
   }
 
   /**
@@ -57,25 +49,6 @@ public class RealmTokenBucketRateLimiter implements RateLimiter {
    */
   @Override
   public boolean tryAcquire() {
-    String key =
-        Optional.ofNullable(CallContext.getCurrentContext())
-            .map(CallContext::getRealmContext)
-            .map(RealmContext::getRealmIdentifier)
-            .orElse("");
-
-    return perRealmLimiters
-        .computeIfAbsent(
-            key,
-            (k) ->
-                new TokenBucketRateLimiter(
-                    requestsPerSecond,
-                    Math.multiplyExact(requestsPerSecond, windowSeconds),
-                    getClock()))
-        .tryAcquire();
-  }
-
-  @VisibleForTesting
-  protected Clock getClock() {
-    return Clock.systemUTC();
+    return tokenBucketManager.getOrCreateTokenBucket(realmContext).tryAcquire();
   }
 }

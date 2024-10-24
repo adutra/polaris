@@ -24,6 +24,7 @@ plugins {
   id("polaris-client")
   id("java-library")
   id("java-test-fixtures")
+  id("org.kordamp.gradle.jandex") version "2.1.0"
 }
 
 dependencies {
@@ -33,10 +34,6 @@ dependencies {
   constraints {
     implementation("io.airlift:aircompressor:0.27") { because("Vulnerability detected in 0.25") }
   }
-  // TODO - this is only here for the Discoverable interface
-  // We should use a different mechanism to discover the plugin implementations
-  implementation(platform(libs.dropwizard.bom))
-  implementation("io.dropwizard:dropwizard-jackson")
 
   implementation(platform(libs.jackson.bom))
   implementation("com.fasterxml.jackson.core:jackson-annotations")
@@ -49,6 +46,7 @@ dependencies {
   implementation(libs.slf4j.api)
   compileOnly(libs.jetbrains.annotations)
   compileOnly(libs.spotbugs.annotations)
+  compileOnly(libs.jakarta.inject.api) // FIXME remove when RuntimeCandidate is removed
 
   constraints {
     implementation("org.xerial.snappy:snappy-java:1.1.10.4") {
@@ -102,15 +100,14 @@ dependencies {
   implementation("io.micrometer:micrometer-core")
 
   testFixturesApi(platform(libs.junit.bom))
-  testFixturesApi("org.junit.jupiter:junit-jupiter")
-  testFixturesApi(libs.assertj.core)
-  testFixturesApi(libs.mockito.core)
+  testFixturesApi(libs.bundles.junit.testing)
   testFixturesApi("com.fasterxml.jackson.core:jackson-core")
   testFixturesApi("com.fasterxml.jackson.core:jackson-databind")
   testFixturesApi(libs.commons.lang3)
   testFixturesApi(libs.threeten.extra)
   testFixturesApi(libs.jetbrains.annotations)
   testFixturesApi(platform(libs.jackson.bom))
+  testRuntimeOnly("org.junit.jupiter:junit-jupiter")
   testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 
   compileOnly(libs.jakarta.annotation.api)
@@ -150,3 +147,5 @@ listOf("sourcesJar", "compileJava").forEach { task ->
 sourceSets {
   main { java { srcDir(project.layout.buildDirectory.dir("generated/src/main/java")) } }
 }
+
+tasks.named("javadoc") { dependsOn("jandex") }

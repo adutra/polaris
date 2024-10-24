@@ -20,11 +20,16 @@ package org.apache.polaris.service.storage;
 
 import com.google.api.client.http.javanet.NetHttpTransport;
 import com.google.auth.http.HttpTransportFactory;
+import com.google.auth.oauth2.AccessToken;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.cloud.ServiceOptions;
-import java.util.EnumMap;
-import java.util.Map;
-import java.util.Set;
+import jakarta.annotation.Nonnull;
+import jakarta.annotation.Nullable;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import java.io.IOException;
+import java.time.Instant;
+import java.util.*;
 import java.util.function.Supplier;
 import org.apache.polaris.core.PolarisDiagnostics;
 import org.apache.polaris.core.storage.PolarisCredentialProperty;
@@ -35,14 +40,59 @@ import org.apache.polaris.core.storage.PolarisStorageIntegrationProvider;
 import org.apache.polaris.core.storage.aws.AwsCredentialsStorageIntegration;
 import org.apache.polaris.core.storage.azure.AzureCredentialsStorageIntegration;
 import org.apache.polaris.core.storage.gcp.GcpCredentialsStorageIntegration;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.services.sts.StsClient;
+import software.amazon.awssdk.services.sts.StsClientBuilder;
 
+@ApplicationScoped
 public class PolarisStorageIntegrationProviderImpl implements PolarisStorageIntegrationProvider {
+
+  private static final Logger LOGGER =
+      LoggerFactory.getLogger(PolarisStorageIntegrationProviderImpl.class);
 
   private final Supplier<StsClient> stsClientSupplier;
   private final Supplier<GoogleCredentials> gcpCredsProvider;
+
+  @Inject
+  public PolarisStorageIntegrationProviderImpl(StorageConfiguration storageConfiguration) {
+    this(stsClientSupplier(storageConfiguration), gcpCredentialsProvider(storageConfiguration));
+  }
+
+  private static Supplier<StsClient> stsClientSupplier(StorageConfiguration config) {
+    return () -> {
+      StsClientBuilder stsClientBuilder = StsClient.builder();
+      if (config.awsAccessKey().isPresent() && config.awsSecretKey().isPresent()) {
+        LOGGER.warn("Using hard-coded AWS credentials - this is not recommended for production");
+        StaticCredentialsProvider awsCredentialsProvider =
+            StaticCredentialsProvider.create(
+                AwsBasicCredentials.create(
+                    config.awsAccessKey().get(), config.awsSecretKey().get()));
+        stsClientBuilder.credentialsProvider(awsCredentialsProvider);
+      }
+      return stsClientBuilder.build();
+    };
+  }
+
+  private static Supplier<GoogleCredentials> gcpCredentialsProvider(StorageConfiguration config) {
+    return () -> {
+      if (config.gcpAccessToken().isEmpty()) {
+        try {
+          return GoogleCredentials.getApplicationDefault();
+        } catch (IOException e) {
+          throw new RuntimeException("Failed to get GCP credentials", e);
+        }
+      } else {
+        AccessToken accessToken =
+            new AccessToken(
+                config.gcpAccessToken().get(),
+                new Date(Instant.now().plus(config.gcpAccessTokenLifespan()).toEpochMilli()));
+        return GoogleCredentials.create(accessToken);
+      }
+    };
+  }
 
   public PolarisStorageIntegrationProviderImpl(
       Supplier<StsClient> stsClientSupplier, Supplier<GoogleCredentials> gcpCredsProvider) {
@@ -82,20 +132,20 @@ public class PolarisStorageIntegrationProviderImpl implements PolarisStorageInte
             new PolarisStorageIntegration<>("file") {
               @Override
               public EnumMap<PolarisCredentialProperty, String> getSubscopedCreds(
-                  @NotNull PolarisDiagnostics diagnostics,
-                  @NotNull T storageConfig,
+                  @Nonnull PolarisDiagnostics diagnostics,
+                  @Nonnull T storageConfig,
                   boolean allowListOperation,
-                  @NotNull Set<String> allowedReadLocations,
-                  @NotNull Set<String> allowedWriteLocations) {
+                  @Nonnull Set<String> allowedReadLocations,
+                  @Nonnull Set<String> allowedWriteLocations) {
                 return new EnumMap<>(PolarisCredentialProperty.class);
               }
 
               @Override
-              public @NotNull Map<String, Map<PolarisStorageActions, ValidationResult>>
+              public @Nonnull Map<String, Map<PolarisStorageActions, ValidationResult>>
                   validateAccessToLocations(
-                      @NotNull T storageConfig,
-                      @NotNull Set<PolarisStorageActions> actions,
-                      @NotNull Set<String> locations) {
+                      @Nonnull T storageConfig,
+                      @Nonnull Set<PolarisStorageActions> actions,
+                      @Nonnull Set<String> locations) {
                 return Map.of();
               }
             };

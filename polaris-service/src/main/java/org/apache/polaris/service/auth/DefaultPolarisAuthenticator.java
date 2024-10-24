@@ -18,15 +18,31 @@
  */
 package org.apache.polaris.service.auth;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
+import io.smallrye.common.annotation.Identifier;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 import java.util.Optional;
 import org.apache.polaris.core.auth.AuthenticatedPolarisPrincipal;
 import org.apache.polaris.core.context.CallContext;
 import org.apache.polaris.core.persistence.MetaStoreManagerFactory;
-import org.apache.polaris.service.config.HasMetaStoreManagerFactory;
 
+@ApplicationScoped
+@Identifier("default")
 public class DefaultPolarisAuthenticator extends BasePolarisAuthenticator {
-  private TokenBrokerFactory tokenBrokerFactory;
+
+  private final TokenBrokerFactory tokenBrokerFactory;
+
+  // Required for CDI
+  public DefaultPolarisAuthenticator() {
+    this(null, null);
+  }
+
+  @Inject
+  public DefaultPolarisAuthenticator(
+      MetaStoreManagerFactory metaStoreManagerFactory, TokenBrokerFactory tokenBrokerFactory) {
+    super(metaStoreManagerFactory);
+    this.tokenBrokerFactory = tokenBrokerFactory;
+  }
 
   @Override
   public Optional<AuthenticatedPolarisPrincipal> authenticate(String credentials) {
@@ -34,19 +50,5 @@ public class DefaultPolarisAuthenticator extends BasePolarisAuthenticator {
         tokenBrokerFactory.apply(CallContext.getCurrentContext().getRealmContext());
     DecodedToken decodedToken = handler.verify(credentials);
     return getPrincipal(decodedToken);
-  }
-
-  @Override
-  public void setMetaStoreManagerFactory(MetaStoreManagerFactory metaStoreManagerFactory) {
-    super.setMetaStoreManagerFactory(metaStoreManagerFactory);
-    if (tokenBrokerFactory instanceof HasMetaStoreManagerFactory) {
-      ((HasMetaStoreManagerFactory) tokenBrokerFactory)
-          .setMetaStoreManagerFactory(metaStoreManagerFactory);
-    }
-  }
-
-  @JsonProperty("tokenBroker")
-  public void setTokenBroker(TokenBrokerFactory tokenBrokerFactory) {
-    this.tokenBrokerFactory = tokenBrokerFactory;
   }
 }

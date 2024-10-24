@@ -18,6 +18,8 @@
  */
 package org.apache.polaris.service.admin;
 
+import jakarta.enterprise.context.RequestScoped;
+import jakarta.inject.Inject;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.SecurityContext;
 import java.util.List;
@@ -73,6 +75,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /** Concrete implementation of the Polaris API services */
+@RequestScoped
 public class PolarisServiceImpl
     implements PolarisCatalogsApiService,
         PolarisPrincipalsApiService,
@@ -81,18 +84,21 @@ public class PolarisServiceImpl
   private final RealmEntityManagerFactory entityManagerFactory;
   private final PolarisAuthorizer polarisAuthorizer;
   private final MetaStoreManagerFactory metaStoreManagerFactory;
+  private final CallContext callContext;
 
+  @Inject
   public PolarisServiceImpl(
       RealmEntityManagerFactory entityManagerFactory,
       MetaStoreManagerFactory metaStoreManagerFactory,
-      PolarisAuthorizer polarisAuthorizer) {
+      PolarisAuthorizer polarisAuthorizer,
+      CallContext callContext) {
     this.entityManagerFactory = entityManagerFactory;
     this.metaStoreManagerFactory = metaStoreManagerFactory;
     this.polarisAuthorizer = polarisAuthorizer;
+    this.callContext = callContext;
   }
 
   private PolarisAdminService newAdminService(SecurityContext securityContext) {
-    CallContext callContext = CallContext.getCurrentContext();
     AuthenticatedPolarisPrincipal authenticatedPrincipal =
         (AuthenticatedPolarisPrincipal) securityContext.getUserPrincipal();
     if (authenticatedPrincipal == null) {
@@ -121,7 +127,6 @@ public class PolarisServiceImpl
   }
 
   private void validateStorageConfig(StorageConfigInfo storageConfigInfo) {
-    CallContext callContext = CallContext.getCurrentContext();
     PolarisCallContext polarisCallContext = callContext.getPolarisCallContext();
     List<String> allowedStorageTypes =
         polarisCallContext

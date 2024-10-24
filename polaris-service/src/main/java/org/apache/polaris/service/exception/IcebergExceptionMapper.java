@@ -25,6 +25,7 @@ import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.ext.ExceptionMapper;
+import jakarta.ws.rs.ext.Provider;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Locale;
@@ -51,11 +52,11 @@ import org.apache.iceberg.exceptions.ServiceUnavailableException;
 import org.apache.iceberg.exceptions.UnprocessableEntityException;
 import org.apache.iceberg.exceptions.ValidationException;
 import org.apache.iceberg.rest.responses.ErrorResponse;
-import org.jetbrains.annotations.VisibleForTesting;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 
+@Provider
 public class IcebergExceptionMapper implements ExceptionMapper<RuntimeException> {
   private static final Logger LOGGER = LoggerFactory.getLogger(IcebergExceptionMapper.class);
 
@@ -138,7 +139,6 @@ public class IcebergExceptionMapper implements ExceptionMapper<RuntimeException>
     return ACCESS_DENIED_HINTS.stream().anyMatch(messageLower::contains);
   }
 
-  @VisibleForTesting
   public static Collection<String> getAccessDeniedHints() {
     return ImmutableSet.copyOf(ACCESS_DENIED_HINTS);
   }

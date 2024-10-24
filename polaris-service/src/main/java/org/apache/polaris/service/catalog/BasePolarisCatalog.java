@@ -23,6 +23,7 @@ import com.google.common.base.Joiner;
 import com.google.common.base.Objects;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableMap;
+import jakarta.annotation.Nonnull;
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.Arrays;
@@ -94,20 +95,13 @@ import org.apache.polaris.core.persistence.resolver.PolarisResolutionManifest;
 import org.apache.polaris.core.persistence.resolver.PolarisResolutionManifestCatalogView;
 import org.apache.polaris.core.persistence.resolver.ResolverPath;
 import org.apache.polaris.core.persistence.resolver.ResolverStatus;
-import org.apache.polaris.core.storage.InMemoryStorageIntegration;
-import org.apache.polaris.core.storage.PolarisCredentialVendor;
-import org.apache.polaris.core.storage.PolarisStorageActions;
-import org.apache.polaris.core.storage.PolarisStorageConfigurationInfo;
-import org.apache.polaris.core.storage.PolarisStorageIntegration;
-import org.apache.polaris.core.storage.StorageLocation;
+import org.apache.polaris.core.storage.*;
 import org.apache.polaris.core.storage.aws.PolarisS3FileIOClientFactory;
 import org.apache.polaris.service.catalog.io.FileIOFactory;
 import org.apache.polaris.service.exception.IcebergExceptionMapper;
 import org.apache.polaris.service.task.TaskExecutor;
 import org.apache.polaris.service.types.NotificationRequest;
 import org.apache.polaris.service.types.NotificationType;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.TestOnly;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import software.amazon.awssdk.core.exception.SdkException;
@@ -212,7 +206,7 @@ public class BasePolarisCatalog extends BaseMetastoreViewCatalog
     return catalogName;
   }
 
-  @TestOnly
+  @VisibleForTesting
   FileIO getIo() {
     return catalogFileIO;
   }
@@ -554,7 +548,7 @@ public class BasePolarisCatalog extends BaseMetastoreViewCatalog
     }
   }
 
-  private static @NotNull String resolveLocationForPath(List<PolarisEntity> parentPath) {
+  private static @Nonnull String resolveLocationForPath(List<PolarisEntity> parentPath) {
     // always take the first object. If it has the base-location, stop there
     AtomicBoolean foundBaseLocation = new AtomicBoolean(false);
     return parentPath.reversed().stream()
@@ -850,7 +844,7 @@ public class BasePolarisCatalog extends BaseMetastoreViewCatalog
     return specifiedTableLikeLocation;
   }
 
-  private @NotNull Optional<PolarisEntity> findStorageInfo(TableIdentifier tableIdentifier) {
+  private @Nonnull Optional<PolarisEntity> findStorageInfo(TableIdentifier tableIdentifier) {
     PolarisResolvedPathWrapper resolvedTableEntities =
         resolvedEntityView.getResolvedPath(tableIdentifier, PolarisEntitySubType.TABLE);
 
@@ -1427,7 +1421,7 @@ public class BasePolarisCatalog extends BaseMetastoreViewCatalog
     }
   }
 
-  private static @NotNull Optional<PolarisEntity> findStorageInfoFromHierarchy(
+  private static @Nonnull Optional<PolarisEntity> findStorageInfoFromHierarchy(
       PolarisResolvedPathWrapper resolvedStorageEntity) {
     Optional<PolarisEntity> storageInfoEntity =
         resolvedStorageEntity.getRawFullPath().reversed().stream()
@@ -1835,7 +1829,7 @@ public class BasePolarisCatalog extends BaseMetastoreViewCatalog
   }
 
   @SuppressWarnings("FormatStringAnnotation")
-  private @NotNull PolarisMetaStoreManager.DropEntityResult dropTableLike(
+  private @Nonnull PolarisMetaStoreManager.DropEntityResult dropTableLike(
       PolarisEntitySubType subType,
       TableIdentifier identifier,
       Map<String, String> storageProperties,

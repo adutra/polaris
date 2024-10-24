@@ -26,12 +26,14 @@ services:
       - "8182"
     environment:
       AWS_REGION: us-west-2
+      AWS_ACCESS_KEY_ID: $AWS_ACCESS_KEY_ID
+      AWS_SECRET_ACCESS_KEY: $AWS_SECRET_ACCESS_KEY
       GOOGLE_APPLICATION_CREDENTIALS: $GOOGLE_APPLICATION_CREDENTIALS
       AZURE_TENANT_ID: $AZURE_TENANT_ID
       AZURE_CLIENT_ID: $AZURE_CLIENT_ID
       AZURE_CLIENT_SECRET: $AZURE_CLIENT_SECRET
-      # add aws keys as dropwizard config
-      JAVA_OPTS: -Ddw.awsAccessKey=$AWS_ACCESS_KEY_ID -Ddw.awsSecretKey=$AWS_SECRET_ACCESS_KEY
+      POLARIS_AUTHENTICATION_TYPE: test
+      POLARIS_AUTHENTICATION_OAUTH2_SERVICE_TYPE: test
     volumes:
       - ./regtests/credentials:/tmp/credentials/
 

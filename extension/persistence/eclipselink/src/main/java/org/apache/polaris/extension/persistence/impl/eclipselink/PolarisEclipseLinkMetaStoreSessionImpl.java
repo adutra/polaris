@@ -21,7 +21,6 @@ package org.apache.polaris.extension.persistence.impl.eclipselink;
 import static org.eclipse.persistence.config.PersistenceUnitProperties.ECLIPSELINK_PERSISTENCE_XML;
 import static org.eclipse.persistence.config.PersistenceUnitProperties.JDBC_URL;
 
-import com.google.common.base.Predicates;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
 import jakarta.persistence.EntityTransaction;
@@ -523,7 +522,7 @@ public class PolarisEclipseLinkMetaStoreSessionImpl implements PolarisMetaStoreS
       long catalogId,
       long parentId,
       @NotNull PolarisEntityType entityType) {
-    return listActiveEntities(callCtx, catalogId, parentId, entityType, Predicates.alwaysTrue());
+    return listActiveEntities(callCtx, catalogId, parentId, entityType, x -> true);
   }
 
   @Override

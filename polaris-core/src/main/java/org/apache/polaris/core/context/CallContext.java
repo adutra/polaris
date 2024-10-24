@@ -100,8 +100,8 @@ public interface CallContext extends AutoCloseable {
    * CallContext}.
    */
   static CallContext copyOf(CallContext base) {
-    RealmContext realmContext = base.getRealmContext();
-    PolarisCallContext polarisCallContext = base.getPolarisCallContext();
+    RealmContext realmContext = RealmContext.copyOf(base.getRealmContext());
+    PolarisCallContext polarisCallContext = PolarisCallContext.copyOf(base.getPolarisCallContext());
     Map<String, Object> contextVariables =
         base.contextVariables().entrySet().stream()
             .filter(e -> !e.getKey().equals(CLOSEABLES))
@@ -142,16 +142,16 @@ public interface CallContext extends AutoCloseable {
   default void close() {
     if (CURRENT_CONTEXT.get() == this) {
       unsetCurrentContext();
-      CloseableGroup closeables = closeables();
-      try {
-        closeables.close();
-      } catch (IOException e) {
-        Logger logger = LoggerFactory.getLogger(CallContext.class);
-        logger
-            .atWarn()
-            .addKeyValue("closeableGroup", closeables)
-            .log("Unable to close closeable group", e);
-      }
+    }
+    CloseableGroup closeables = closeables();
+    try {
+      closeables.close();
+    } catch (IOException e) {
+      Logger logger = LoggerFactory.getLogger(CallContext.class);
+      logger
+          .atWarn()
+          .addKeyValue("closeableGroup", closeables)
+          .log("Unable to close closeable group", e);
     }
   }
 }
