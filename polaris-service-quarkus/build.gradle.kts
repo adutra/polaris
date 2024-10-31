@@ -92,6 +92,7 @@ dependencies {
     exclude("org.apache.logging.log4j", "log4j-slf4j2-impl")
     exclude("org.apache.logging.log4j", "log4j-api")
     exclude("org.apache.logging.log4j", "log4j-1.2-api")
+    exclude("org.slf4j", "jul-to-slf4j")
   }
 
   testImplementation("software.amazon.awssdk:glue")
@@ -100,6 +101,8 @@ dependencies {
 
   testImplementation(platform(libs.junit.bom))
   testImplementation(libs.bundles.junit.testing)
+  testImplementation(libs.assertj.core)
+  testImplementation(libs.mockito.core)
 
   testImplementation(platform(libs.quarkus.bom))
   testImplementation("io.quarkus:quarkus-junit5")
@@ -107,6 +110,17 @@ dependencies {
   testImplementation("io.quarkus:quarkus-rest-client")
   testImplementation("io.quarkus:quarkus-rest-client-jackson")
   testImplementation("io.rest-assured:rest-assured")
+
+  testImplementation(platform(libs.testcontainers.bom))
+  testImplementation("org.testcontainers:testcontainers")
+  testImplementation(libs.s3mock.testcontainers)
+
+  // required for PolarisSparkIntegrationTest
+  testImplementation(enforcedPlatform("org.scala-lang:scala-library:2.12.18"))
+  testImplementation(enforcedPlatform("org.scala-lang:scala-reflect:2.12.18"))
+  testImplementation(
+    enforcedPlatform("org.antlr:antlr4-runtime:4.9.3")
+  ) // cannot be higher than 4.9.3
 }
 
 openApiGenerate {
@@ -199,4 +213,38 @@ listOf("sourcesJar", "compileJava").forEach { task ->
 
 sourceSets {
   main { java { srcDir(project.layout.buildDirectory.dir("generated/src/main/java")) } }
+}
+
+tasks.withType(Test::class.java).configureEach {
+  systemProperty("java.util.logging.manager", "org.jboss.logmanager.LogManager")
+  addSparkJvmOptions()
+}
+
+/**
+ * Adds the JPMS options required for Spark to run on Java 17, taken from the
+ * `DEFAULT_MODULE_OPTIONS` constant in `org.apache.spark.launcher.JavaModuleOptions`.
+ */
+fun JavaForkOptions.addSparkJvmOptions() {
+  jvmArgs =
+    (jvmArgs ?: emptyList()) +
+      listOf(
+        // Spark 3.3+
+        "-XX:+IgnoreUnrecognizedVMOptions",
+        "--add-opens=java.base/java.lang=ALL-UNNAMED",
+        "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED",
+        "--add-opens=java.base/java.lang.reflect=ALL-UNNAMED",
+        "--add-opens=java.base/java.io=ALL-UNNAMED",
+        "--add-opens=java.base/java.net=ALL-UNNAMED",
+        "--add-opens=java.base/java.nio=ALL-UNNAMED",
+        "--add-opens=java.base/java.util=ALL-UNNAMED",
+        "--add-opens=java.base/java.util.concurrent=ALL-UNNAMED",
+        "--add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED",
+        "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED",
+        "--add-opens=java.base/sun.nio.cs=ALL-UNNAMED",
+        "--add-opens=java.base/sun.security.action=ALL-UNNAMED",
+        "--add-opens=java.base/sun.util.calendar=ALL-UNNAMED",
+        "--add-opens=java.security.jgss/sun.security.krb5=ALL-UNNAMED",
+        // Spark 3.4+
+        "-Djdk.reflect.useDirectMethodHandle=false"
+      )
 }

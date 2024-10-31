@@ -59,7 +59,7 @@ public class TokenBucketRateLimiterTest {
   @Test
   void testConcurrent() throws InterruptedException {
     int maxTokens = 100;
-    int numTasks = 50000;
+    int numTasks = 5000; // FIXME 50000 yields OOME
     int tokensPerSecond = 10; // Can be anything above 0
 
     TokenBucketRateLimiter rl =
@@ -71,7 +71,6 @@ public class TokenBucketRateLimiterTest {
 
     try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
       for (int i = 0; i < numTasks; i++) {
-        int i_ = i;
         executor.submit(
             () -> {
               try {
