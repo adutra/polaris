@@ -220,6 +220,15 @@ tasks.withType(Test::class.java).configureEach {
   addSparkJvmOptions()
 }
 
+tasks.named<Test>("test").configure {
+  if (System.getenv("AWS_REGION") == null) {
+    environment("AWS_REGION", "us-west-2")
+  }
+  jvmArgs("--add-exports", "java.base/sun.nio.ch=ALL-UNNAMED")
+  useJUnitPlatform()
+  maxParallelForks = 4
+}
+
 /**
  * Adds the JPMS options required for Spark to run on Java 17, taken from the
  * `DEFAULT_MODULE_OPTIONS` constant in `org.apache.spark.launcher.JavaModuleOptions`.
