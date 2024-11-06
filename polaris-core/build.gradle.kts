@@ -24,6 +24,7 @@ plugins {
   id("polaris-client")
   id("java-library")
   id("java-test-fixtures")
+  id("org.kordamp.gradle.jandex") version "2.1.0"
 }
 
 dependencies {
@@ -153,3 +154,5 @@ listOf("sourcesJar", "compileJava").forEach { task ->
 sourceSets {
   main { java { srcDir(project.layout.buildDirectory.dir("generated/src/main/java")) } }
 }
+
+tasks.named("javadoc") { dependsOn("jandex") }
