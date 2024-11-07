@@ -35,7 +35,7 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
  */
 @ApplicationScoped
 @RuntimeCandidate
-@LookupIfProperty(name = "polaris.persistence.metastore-manager.type", stringValue = "eclipselink")
+@LookupIfProperty(name = "polaris.persistence.metastore-manager.type", stringValue = "eclipse-link")
 public class EclipseLinkPolarisMetaStoreManagerFactory
     extends LocalPolarisMetaStoreManagerFactory<PolarisEclipseLinkStore> {
 
