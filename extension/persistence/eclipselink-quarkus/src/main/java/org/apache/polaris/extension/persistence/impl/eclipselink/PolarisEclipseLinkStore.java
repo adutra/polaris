@@ -296,7 +296,7 @@ public class PolarisEclipseLinkStore {
   }
 
   List<ModelEntity> lookupFullEntitiesActive(
-      EntityManager session, long catalogId, long parentId, @NotNull PolarisEntityType entityType) {
+      EntityManager session, long catalogId, long parentId, PolarisEntityType entityType) {
     diagnosticServices.check(session != null, "session_is_null");
     checkInitialized();
 

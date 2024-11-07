@@ -38,6 +38,7 @@ dependencies {
 
   compileOnly(libs.jakarta.enterprise.cdi.api)
   compileOnly(libs.jakarta.inject.api)
+  compileOnly("io.quarkus:quarkus-arc")
   compileOnly("org.eclipse.microprofile.config:microprofile-config-api")
 
   testImplementation(libs.h2)
