@@ -31,10 +31,9 @@ import org.apache.polaris.core.PolarisCallContext;
 import org.apache.polaris.core.context.CallContext;
 import org.apache.polaris.core.entity.PolarisEntitySubType;
 import org.apache.polaris.core.entity.PolarisEntityType;
-import org.apache.polaris.core.persistence.PolarisEntityManager;
+import org.apache.polaris.core.persistence.MetaStoreManagerFactory;
 import org.apache.polaris.core.persistence.PolarisMetaStoreManager;
 import org.apache.polaris.service.catalog.api.IcebergRestOAuth2ApiService;
-import org.apache.polaris.service.config.RealmEntityManagerFactory;
 import org.apache.polaris.service.config.RuntimeCandidate;
 import org.apache.polaris.service.types.TokenType;
 import org.slf4j.Logger;
@@ -46,15 +45,11 @@ import org.slf4j.LoggerFactory;
 public class TestOAuth2ApiService implements IcebergRestOAuth2ApiService {
   private static final Logger LOGGER = LoggerFactory.getLogger(TestOAuth2ApiService.class);
 
-  private final RealmEntityManagerFactory entityManagerFactory;
-  private final CallContext callContext;
+  private final MetaStoreManagerFactory metaStoreManagerFactory;
 
   @Inject
-  public TestOAuth2ApiService(
-      RealmEntityManagerFactory entityManagerFactory, CallContext callContext) {
-    this.entityManagerFactory = entityManagerFactory;
-    this.callContext = callContext;
-    CallContext.setCurrentContext(callContext);
+  public TestOAuth2ApiService(MetaStoreManagerFactory metaStoreManagerFactory) {
+    this.metaStoreManagerFactory = metaStoreManagerFactory;
   }
 
   @Override
@@ -79,7 +74,7 @@ public class TestOAuth2ApiService implements IcebergRestOAuth2ApiService {
             + ";password:"
             + clientSecret
             + ";realm:"
-            + callContext.getRealmContext().getRealmIdentifier()
+            + CallContext.getCurrentContext().getRealmContext().getRealmIdentifier()
             + ";role:"
             + scope.replaceAll(BasePolarisAuthenticator.PRINCIPAL_ROLE_PREFIX, ""));
     response.put("token_type", "bearer");
@@ -89,18 +84,17 @@ public class TestOAuth2ApiService implements IcebergRestOAuth2ApiService {
   }
 
   private String getPrincipalName(String clientId) {
-    PolarisEntityManager entityManager =
-        entityManagerFactory.getOrCreateEntityManager(callContext.getRealmContext());
-    PolarisCallContext polarisCallContext = callContext.getPolarisCallContext();
+    PolarisMetaStoreManager metaStoreManager =
+        metaStoreManagerFactory.getOrCreateMetaStoreManager(
+            CallContext.getCurrentContext().getRealmContext());
+    PolarisCallContext polarisCallContext = CallContext.getCurrentContext().getPolarisCallContext();
     PolarisMetaStoreManager.PrincipalSecretsResult secretsResult =
-        entityManager.getMetaStoreManager().loadPrincipalSecrets(polarisCallContext, clientId);
+        metaStoreManager.loadPrincipalSecrets(polarisCallContext, clientId);
     if (secretsResult.isSuccess()) {
       LOGGER.debug("Found principal secrets for client id {}", clientId);
       PolarisMetaStoreManager.EntityResult principalResult =
-          entityManager
-              .getMetaStoreManager()
-              .loadEntity(
-                  polarisCallContext, 0L, secretsResult.getPrincipalSecrets().getPrincipalId());
+          metaStoreManager.loadEntity(
+              polarisCallContext, 0L, secretsResult.getPrincipalSecrets().getPrincipalId());
       if (!principalResult.isSuccess()) {
         throw new NotAuthorizedException("Failed to load principal entity");
       }
@@ -109,14 +103,12 @@ public class TestOAuth2ApiService implements IcebergRestOAuth2ApiService {
       LOGGER.debug(
           "Unable to find principal secrets for client id {} - trying as principal name", clientId);
       PolarisMetaStoreManager.EntityResult principalResult =
-          entityManager
-              .getMetaStoreManager()
-              .readEntityByName(
-                  polarisCallContext,
-                  null,
-                  PolarisEntityType.PRINCIPAL,
-                  PolarisEntitySubType.NULL_SUBTYPE,
-                  clientId);
+          metaStoreManager.readEntityByName(
+              polarisCallContext,
+              null,
+              PolarisEntityType.PRINCIPAL,
+              PolarisEntitySubType.NULL_SUBTYPE,
+              clientId);
       if (!principalResult.isSuccess()) {
         throw new NotAuthorizedException("Failed to read principal entity");
       }

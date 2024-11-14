@@ -43,13 +43,8 @@ public class LocalRSAKeyProvider implements KeyProvider {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(LocalRSAKeyProvider.class);
 
-  private final CallContext callContext;
-
-  public LocalRSAKeyProvider(CallContext callContext) {
-    this.callContext = callContext;
-  }
-
   private String getLocation(String configKey) {
+    CallContext callContext = CallContext.getCurrentContext();
     PolarisCallContext pCtx = callContext.getPolarisCallContext();
     String fileLocation = pCtx.getConfigurationStore().getConfiguration(pCtx, configKey);
     if (fileLocation == null) {

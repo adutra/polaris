@@ -64,7 +64,9 @@ import org.apache.polaris.core.entity.CatalogRoleEntity;
 import org.apache.polaris.core.entity.PolarisPrivilege;
 import org.apache.polaris.core.entity.PrincipalEntity;
 import org.apache.polaris.core.entity.PrincipalRoleEntity;
+import org.apache.polaris.core.persistence.MetaStoreManagerFactory;
 import org.apache.polaris.core.persistence.PolarisEntityManager;
+import org.apache.polaris.core.persistence.PolarisMetaStoreManager;
 import org.apache.polaris.service.admin.api.PolarisCatalogsApiService;
 import org.apache.polaris.service.admin.api.PolarisPrincipalRolesApiService;
 import org.apache.polaris.service.admin.api.PolarisPrincipalsApiService;
@@ -79,22 +81,22 @@ public class PolarisServiceImpl
         PolarisPrincipalsApiService,
         PolarisPrincipalRolesApiService {
   private static final Logger LOGGER = LoggerFactory.getLogger(PolarisServiceImpl.class);
-  private final CallContext callContext;
   private final RealmEntityManagerFactory entityManagerFactory;
   private final PolarisAuthorizer polarisAuthorizer;
+  private final MetaStoreManagerFactory metaStoreManagerFactory;
 
   @Inject
   public PolarisServiceImpl(
-      CallContext callContext,
       RealmEntityManagerFactory entityManagerFactory,
+      MetaStoreManagerFactory metaStoreManagerFactory,
       PolarisAuthorizer polarisAuthorizer) {
-    this.callContext = callContext;
     this.entityManagerFactory = entityManagerFactory;
+    this.metaStoreManagerFactory = metaStoreManagerFactory;
     this.polarisAuthorizer = polarisAuthorizer;
-    CallContext.setCurrentContext(callContext);
   }
 
   private PolarisAdminService newAdminService(SecurityContext securityContext) {
+    CallContext callContext = CallContext.getCurrentContext();
     AuthenticatedPolarisPrincipal authenticatedPrincipal =
         (AuthenticatedPolarisPrincipal) securityContext.getUserPrincipal();
     if (authenticatedPrincipal == null) {
@@ -103,8 +105,10 @@ public class PolarisServiceImpl
 
     PolarisEntityManager entityManager =
         entityManagerFactory.getOrCreateEntityManager(callContext.getRealmContext());
+    PolarisMetaStoreManager metaStoreManager =
+        metaStoreManagerFactory.getOrCreateMetaStoreManager(callContext.getRealmContext());
     return new PolarisAdminService(
-        callContext, entityManager, authenticatedPrincipal, polarisAuthorizer);
+        callContext, entityManager, metaStoreManager, authenticatedPrincipal, polarisAuthorizer);
   }
 
   /** From PolarisCatalogsApiService */
@@ -121,6 +125,7 @@ public class PolarisServiceImpl
   }
 
   private void validateStorageConfig(StorageConfigInfo storageConfigInfo) {
+    CallContext callContext = CallContext.getCurrentContext();
     PolarisCallContext polarisCallContext = callContext.getPolarisCallContext();
     List<String> allowedStorageTypes =
         polarisCallContext

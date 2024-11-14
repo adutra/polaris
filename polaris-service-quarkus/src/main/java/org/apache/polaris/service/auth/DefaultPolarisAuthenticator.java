@@ -24,7 +24,7 @@ import jakarta.inject.Inject;
 import java.util.Optional;
 import org.apache.polaris.core.auth.AuthenticatedPolarisPrincipal;
 import org.apache.polaris.core.context.CallContext;
-import org.apache.polaris.service.config.RealmEntityManagerFactory;
+import org.apache.polaris.core.persistence.MetaStoreManagerFactory;
 import org.apache.polaris.service.config.RuntimeCandidate;
 
 @ApplicationScoped
@@ -36,21 +36,20 @@ public class DefaultPolarisAuthenticator extends BasePolarisAuthenticator {
 
   // Required for CDI
   public DefaultPolarisAuthenticator() {
-    this(null, null, null);
+    this(null, null);
   }
 
   @Inject
   public DefaultPolarisAuthenticator(
-      RealmEntityManagerFactory entityManagerFactory,
-      TokenBrokerFactory tokenBrokerFactory,
-      CallContext callContext) {
-    super(entityManagerFactory, callContext);
+      MetaStoreManagerFactory metaStoreManagerFactory, TokenBrokerFactory tokenBrokerFactory) {
+    super(metaStoreManagerFactory);
     this.tokenBrokerFactory = tokenBrokerFactory;
   }
 
   @Override
   public Optional<AuthenticatedPolarisPrincipal> authenticate(String credentials) {
-    TokenBroker handler = tokenBrokerFactory.apply(callContext.getRealmContext());
+    TokenBroker handler =
+        tokenBrokerFactory.apply(CallContext.getCurrentContext().getRealmContext());
     DecodedToken decodedToken = handler.verify(credentials);
     return getPrincipal(decodedToken);
   }

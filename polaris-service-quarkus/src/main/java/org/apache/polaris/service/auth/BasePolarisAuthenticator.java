@@ -24,6 +24,7 @@ import java.util.Optional;
 import java.util.Set;
 import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.apache.iceberg.exceptions.NotAuthorizedException;
+import org.apache.polaris.core.PolarisCallContext;
 import org.apache.polaris.core.auth.AuthenticatedPolarisPrincipal;
 import org.apache.polaris.core.context.CallContext;
 import org.apache.polaris.core.context.RealmContext;
@@ -31,8 +32,8 @@ import org.apache.polaris.core.entity.PolarisEntity;
 import org.apache.polaris.core.entity.PolarisEntitySubType;
 import org.apache.polaris.core.entity.PolarisEntityType;
 import org.apache.polaris.core.entity.PrincipalEntity;
+import org.apache.polaris.core.persistence.MetaStoreManagerFactory;
 import org.apache.polaris.core.persistence.PolarisMetaStoreManager;
-import org.apache.polaris.service.config.RealmEntityManagerFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -49,30 +50,31 @@ public abstract class BasePolarisAuthenticator
   public static final String PRINCIPAL_ROLE_PREFIX = "PRINCIPAL_ROLE:";
   private static final Logger LOGGER = LoggerFactory.getLogger(BasePolarisAuthenticator.class);
 
-  protected final RealmEntityManagerFactory entityManagerFactory;
-  protected final CallContext callContext;
+  protected final MetaStoreManagerFactory metaStoreManagerFactory;
 
-  protected BasePolarisAuthenticator(
-      RealmEntityManagerFactory entityManagerFactory, CallContext callContext) {
-    this.entityManagerFactory = entityManagerFactory;
-    this.callContext = callContext;
+  protected BasePolarisAuthenticator(MetaStoreManagerFactory metaStoreManagerFactory) {
+    this.metaStoreManagerFactory = metaStoreManagerFactory;
+  }
+
+  public PolarisCallContext getCurrentPolarisContext() {
+    return CallContext.getCurrentContext().getPolarisCallContext();
   }
 
   protected Optional<AuthenticatedPolarisPrincipal> getPrincipal(DecodedToken tokenInfo) {
     LOGGER.debug("Resolving principal for tokenInfo client_id={}", tokenInfo.getClientId());
-    RealmContext realmContext = callContext.getRealmContext();
+    RealmContext realmContext = CallContext.getCurrentContext().getRealmContext();
     PolarisMetaStoreManager metaStoreManager =
-        entityManagerFactory.getOrCreateEntityManager(realmContext).getMetaStoreManager();
+        metaStoreManagerFactory.getOrCreateMetaStoreManager(realmContext);
     PolarisEntity principal;
     try {
       principal =
           tokenInfo.getPrincipalId() > 0
               ? PolarisEntity.of(
                   metaStoreManager.loadEntity(
-                      callContext.getPolarisCallContext(), 0L, tokenInfo.getPrincipalId()))
+                      getCurrentPolarisContext(), 0L, tokenInfo.getPrincipalId()))
               : PolarisEntity.of(
                   metaStoreManager.readEntityByName(
-                      callContext.getPolarisCallContext(),
+                      getCurrentPolarisContext(),
                       null,
                       PolarisEntityType.PRINCIPAL,
                       PolarisEntitySubType.NULL_SUBTYPE,
@@ -109,7 +111,9 @@ public abstract class BasePolarisAuthenticator
     AuthenticatedPolarisPrincipal authenticatedPrincipal =
         new AuthenticatedPolarisPrincipal(new PrincipalEntity(principal), activatedPrincipalRoles);
     LOGGER.debug("Populating authenticatedPrincipal into CallContext: {}", authenticatedPrincipal);
-    callContext.contextVariables().put(CallContext.AUTHENTICATED_PRINCIPAL, authenticatedPrincipal);
+    CallContext.getCurrentContext()
+        .contextVariables()
+        .put(CallContext.AUTHENTICATED_PRINCIPAL, authenticatedPrincipal);
     return Optional.of(authenticatedPrincipal);
   }
 }

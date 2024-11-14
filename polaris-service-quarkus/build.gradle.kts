@@ -44,6 +44,8 @@ dependencies {
   implementation("io.quarkus:quarkus-opentelemetry")
   implementation("io.quarkus:quarkus-container-image-docker")
 
+  implementation("org.apache.commons:commons-lang3:3.17.0")
+
   compileOnly(libs.jakarta.enterprise.cdi.api)
   compileOnly(libs.jakarta.inject.api)
   compileOnly(libs.jakarta.validation.api)
@@ -77,6 +79,8 @@ dependencies {
   implementation("software.amazon.awssdk:sts")
   implementation("software.amazon.awssdk:iam-policy-builder")
   implementation("software.amazon.awssdk:s3")
+  implementation(platform(libs.azuresdk.bom))
+  implementation("com.azure:azure-core")
 
   implementation("io.quarkus:quarkus-micrometer-registry-prometheus")
 

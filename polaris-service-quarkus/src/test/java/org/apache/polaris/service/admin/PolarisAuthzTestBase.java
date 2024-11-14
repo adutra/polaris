@@ -78,6 +78,7 @@ import org.apache.polaris.service.config.DefaultConfigurationStore;
 import org.apache.polaris.service.config.RealmEntityManagerFactory;
 import org.apache.polaris.service.context.CallContextCatalogFactory;
 import org.apache.polaris.service.context.PolarisCallContextCatalogFactory;
+import org.apache.polaris.service.persistence.InMemoryPolarisMetaStoreManagerFactory;
 import org.apache.polaris.service.storage.PolarisStorageIntegrationProviderImpl;
 import org.apache.polaris.service.task.TaskExecutor;
 import org.assertj.core.api.Assertions;
@@ -157,6 +158,7 @@ public abstract class PolarisAuthzTestBase {
   protected PrincipalEntity principalEntity;
   protected CallContext callContext;
   protected AuthenticatedPolarisPrincipal authenticatedRoot;
+  protected InMemoryPolarisMetaStoreManagerFactory metaStoreManagerFactory;
 
   private String realmName;
   private PolarisCallContext polarisContext;
@@ -195,16 +197,23 @@ public abstract class PolarisAuthzTestBase {
             Clock.systemDefaultZone());
     this.entityManager =
         new PolarisEntityManager(
-            metaStoreManager, polarisContext::getMetaStore, new StorageCredentialCache());
+            metaStoreManager, new StorageCredentialCache());
 
-    callContext = CallContext.of(realmContext, polarisContext);
+    callContext =
+        CallContext.of(
+            new RealmContext() {
+              @Override
+              public String getRealmIdentifier() {
+                return "test-realm";
+              }
+            },
+            polarisContext);
     CallContext.setCurrentContext(callContext);
 
     PrincipalEntity rootEntity =
         new PrincipalEntity(
             PolarisEntity.of(
-                entityManager
-                    .getMetaStoreManager()
+                metaStoreManager
                     .readEntityByName(
                         polarisContext,
                         null,
@@ -216,7 +225,8 @@ public abstract class PolarisAuthzTestBase {
     this.authenticatedRoot = new AuthenticatedPolarisPrincipal(rootEntity, Set.of());
 
     this.adminService =
-        new PolarisAdminService(callContext, entityManager, authenticatedRoot, polarisAuthorizer);
+        new PolarisAdminService(
+            callContext, entityManager, metaStoreManager, authenticatedRoot, polarisAuthorizer);
 
     String storageLocation = "file:///tmp/authz";
     FileStorageConfigInfo storageConfigModel =
@@ -343,8 +353,7 @@ public abstract class PolarisAuthzTestBase {
 
     return new PrincipalEntity(
         PolarisEntity.of(
-            entityManager
-                .getMetaStoreManager()
+            metaStoreManager
                 .readEntityByName(
                     polarisContext,
                     null,
@@ -374,6 +383,7 @@ public abstract class PolarisAuthzTestBase {
     this.baseCatalog =
         new BasePolarisCatalog(
             entityManager,
+            metaStoreManager,
             callContext,
             passthroughView,
             authenticatedRoot,
@@ -389,11 +399,17 @@ public abstract class PolarisAuthzTestBase {
   public static class TestPolarisCallContextCatalogFactory
       extends PolarisCallContextCatalogFactory {
 
-    public TestPolarisCallContextCatalogFactory(
-        RealmEntityManagerFactory entityManagerFactory,
-        TaskExecutor taskExecutor,
-        FileIOFactory fileIOFactory) {
-      super(entityManagerFactory, taskExecutor, fileIOFactory);
+    public TestPolarisCallContextCatalogFactory() {
+      super(
+          new RealmEntityManagerFactory() {
+            @Override
+            public PolarisEntityManager getOrCreateEntityManager(RealmContext realmContext) {
+              return entityManager;
+            }
+          },
+          metaStoreManagerFactory,
+          Mockito.mock(),
+          new DefaultFileIOFactory());
     }
 
     @Override

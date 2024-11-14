@@ -26,10 +26,8 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Optional;
 import java.util.function.Supplier;
-import org.apache.polaris.core.PolarisCallContext;
-import org.apache.polaris.core.context.CallContext;
 import org.apache.polaris.core.context.RealmContext;
-import org.apache.polaris.service.config.RealmEntityManagerFactory;
+import org.apache.polaris.core.persistence.MetaStoreManagerFactory;
 import org.apache.polaris.service.config.RuntimeCandidate;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
@@ -40,24 +38,20 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
     stringValue = "symmetric-key")
 public class JWTSymmetricKeyFactory implements TokenBrokerFactory {
 
-  private final RealmEntityManagerFactory realmEntityManagerFactory;
-  private final PolarisCallContext polarisCallContext;
+  private MetaStoreManagerFactory metaStoreManagerFactory;
   private final Duration maxTokenGenerationInSeconds;
-
   private final Path file;
   private final String secret;
 
   public JWTSymmetricKeyFactory(
-      RealmEntityManagerFactory realmEntityManagerFactory,
-      CallContext callContext,
+      MetaStoreManagerFactory metaStoreManagerFactory,
       @ConfigProperty(name = "polaris.authentication.token-broker-factory.max-token-generation")
           Duration maxTokenGenerationInSeconds,
       @ConfigProperty(name = "polaris.authentication.token-broker-factory.symmetric-key.secret")
           Optional<String> secret,
       @ConfigProperty(name = "polaris.authentication.token-broker-factory.symmetric-key.file")
           Optional<Path> file) {
-    this.realmEntityManagerFactory = realmEntityManagerFactory;
-    this.polarisCallContext = callContext.getPolarisCallContext();
+    this.metaStoreManagerFactory = metaStoreManagerFactory;
     this.maxTokenGenerationInSeconds = maxTokenGenerationInSeconds;
     this.secret = secret.orElse(null);
     this.file = file.orElse(null);
@@ -68,10 +62,12 @@ public class JWTSymmetricKeyFactory implements TokenBrokerFactory {
 
   @Override
   public TokenBroker apply(RealmContext realmContext) {
+    if (file == null && secret == null) {
+      throw new IllegalStateException("Either file or secret must be set");
+    }
     Supplier<String> secretSupplier = secret != null ? () -> secret : readSecretFromDisk();
     return new JWTSymmetricKeyBroker(
-        realmEntityManagerFactory.getOrCreateEntityManager(realmContext),
-        polarisCallContext,
+        metaStoreManagerFactory.getOrCreateMetaStoreManager(realmContext),
         (int) maxTokenGenerationInSeconds.toSeconds(),
         secretSupplier);
   }

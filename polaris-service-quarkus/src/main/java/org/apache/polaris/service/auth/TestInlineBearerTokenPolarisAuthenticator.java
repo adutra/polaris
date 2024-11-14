@@ -28,11 +28,12 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
+import org.apache.polaris.core.PolarisCallContext;
 import org.apache.polaris.core.auth.AuthenticatedPolarisPrincipal;
 import org.apache.polaris.core.context.CallContext;
 import org.apache.polaris.core.entity.PolarisPrincipalSecrets;
+import org.apache.polaris.core.persistence.MetaStoreManagerFactory;
 import org.apache.polaris.core.persistence.PolarisMetaStoreManager;
-import org.apache.polaris.service.config.RealmEntityManagerFactory;
 import org.apache.polaris.service.config.RuntimeCandidate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -58,13 +59,13 @@ public class TestInlineBearerTokenPolarisAuthenticator extends BasePolarisAuthen
 
   // Required for CDI
   public TestInlineBearerTokenPolarisAuthenticator() {
-    this(null, null);
+    this(null);
   }
 
   @Inject
   public TestInlineBearerTokenPolarisAuthenticator(
-      RealmEntityManagerFactory entityManagerFactory, CallContext callContext) {
-    super(entityManagerFactory, callContext);
+      MetaStoreManagerFactory metaStoreManagerFactory) {
+    super(metaStoreManagerFactory);
   }
 
   @Override
@@ -72,9 +73,9 @@ public class TestInlineBearerTokenPolarisAuthenticator extends BasePolarisAuthen
       throws AuthenticationFailedException {
     Map<String, String> properties = extractPrincipal(credentials);
     PolarisMetaStoreManager metaStoreManager =
-        entityManagerFactory
-            .getOrCreateEntityManager(callContext.getRealmContext())
-            .getMetaStoreManager();
+        metaStoreManagerFactory.getOrCreateMetaStoreManager(
+            CallContext.getCurrentContext().getRealmContext());
+    PolarisCallContext callContext = CallContext.getCurrentContext().getPolarisCallContext();
     String principal = properties.get("principal");
 
     LOGGER.info("Checking for existence of principal {} in map {}", principal, properties);
@@ -89,9 +90,7 @@ public class TestInlineBearerTokenPolarisAuthenticator extends BasePolarisAuthen
     }
 
     PolarisPrincipalSecrets secrets =
-        metaStoreManager
-            .loadPrincipalSecrets(callContext.getPolarisCallContext(), principal)
-            .getPrincipalSecrets();
+        metaStoreManager.loadPrincipalSecrets(callContext, principal).getPrincipalSecrets();
     if (secrets == null) {
       // For test scenarios, if we're allowing short-circuiting into the bearer flow, there may
       // not be a clientId/clientSecret, and instead we'll let the BasePolarisAuthenticator

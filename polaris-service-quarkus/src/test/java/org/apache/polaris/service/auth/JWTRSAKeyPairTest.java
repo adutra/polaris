@@ -42,9 +42,7 @@ import org.apache.polaris.core.entity.PolarisBaseEntity;
 import org.apache.polaris.core.entity.PolarisEntitySubType;
 import org.apache.polaris.core.entity.PolarisEntityType;
 import org.apache.polaris.core.entity.PolarisPrincipalSecrets;
-import org.apache.polaris.core.persistence.PolarisEntityManager;
 import org.apache.polaris.core.persistence.PolarisMetaStoreManager;
-import org.apache.polaris.core.storage.cache.StorageCredentialCache;
 import org.apache.polaris.service.config.DefaultConfigurationStore;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -83,7 +81,7 @@ public class JWTRSAKeyPairTest {
         new CallContext() {
           @Override
           public RealmContext getRealmContext() {
-            return null;
+            return () -> "realm";
           }
 
           @Override
@@ -114,14 +112,11 @@ public class JWTRSAKeyPairTest {
 
     DefaultConfigurationStore store = new DefaultConfigurationStore(config);
     PolarisCallContext polarisCallContext = new PolarisCallContext(null, null, store, null);
-    CallContext callContext = getTestCallContext(polarisCallContext);
-    CallContext.setCurrentContext(callContext);
+    CallContext.setCurrentContext(getTestCallContext(polarisCallContext));
     PolarisMetaStoreManager metastoreManager = Mockito.mock(PolarisMetaStoreManager.class);
     String mainSecret = "client-secret";
     PolarisPrincipalSecrets principalSecrets =
         new PolarisPrincipalSecrets(1L, clientId, mainSecret, "otherSecret");
-    PolarisEntityManager entityManager =
-        new PolarisEntityManager(metastoreManager, Mockito::mock, new StorageCredentialCache());
     Mockito.when(metastoreManager.loadPrincipalSecrets(polarisCallContext, clientId))
         .thenReturn(new PolarisMetaStoreManager.PrincipalSecretsResult(principalSecrets));
     PolarisBaseEntity principal =
@@ -134,14 +129,14 @@ public class JWTRSAKeyPairTest {
             "principal");
     Mockito.when(metastoreManager.loadEntity(polarisCallContext, 0L, 1L))
         .thenReturn(new PolarisMetaStoreManager.EntityResult(principal));
-    LocalRSAKeyProvider provider = new LocalRSAKeyProvider(callContext);
-    TokenBroker tokenBroker = new JWTRSAKeyPair(entityManager, polarisCallContext, provider, 420);
+    TokenBroker tokenBroker = new JWTRSAKeyPair(metastoreManager, 420);
     TokenResponse token =
         tokenBroker.generateFromClientSecrets(
             clientId, mainSecret, TokenRequestValidator.CLIENT_CREDENTIALS, scope);
     assertThat(token).isNotNull();
     assertThat(token.getExpiresIn()).isEqualTo(420);
 
+    LocalRSAKeyProvider provider = new LocalRSAKeyProvider();
     assertThat(provider.getPrivateKey()).isNotNull();
     assertThat(provider.getPublicKey()).isNotNull();
     JWTVerifier verifier =

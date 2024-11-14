@@ -101,6 +101,7 @@ import org.apache.polaris.core.storage.PolarisStorageIntegration;
 import org.apache.polaris.core.storage.StorageLocation;
 import org.apache.polaris.core.storage.aws.PolarisS3FileIOClientFactory;
 import org.apache.polaris.service.catalog.io.FileIOFactory;
+import org.apache.polaris.service.exception.IcebergExceptionMapper;
 import org.apache.polaris.service.task.TaskExecutor;
 import org.apache.polaris.service.types.NotificationRequest;
 import org.apache.polaris.service.types.NotificationType;
@@ -184,6 +185,7 @@ public class BasePolarisCatalog extends BaseMetastoreViewCatalog
    */
   public BasePolarisCatalog(
       PolarisEntityManager entityManager,
+      PolarisMetaStoreManager metaStoreManager,
       CallContext callContext,
       PolarisResolutionManifestCatalogView resolvedEntityView,
       AuthenticatedPolarisPrincipal authenticatedPrincipal,
@@ -199,7 +201,7 @@ public class BasePolarisCatalog extends BaseMetastoreViewCatalog
     this.catalogId = catalogEntity.getId();
     this.catalogName = catalogEntity.getName();
     this.fileIOFactory = fileIOFactory;
-    this.metaStoreManager = entityManager.getMetaStoreManager();
+    this.metaStoreManager = metaStoreManager;
   }
 
   @Override
@@ -261,7 +263,7 @@ public class BasePolarisCatalog extends BaseMetastoreViewCatalog
             CatalogProperties.FILE_IO_IMPL);
       }
     }
-    this.closeableGroup = callContext.closeables();
+    this.closeableGroup = CallContext.getCurrentContext().closeables();
     closeableGroup.addCloseable(metricsReporter());
     closeableGroup.setSuppressCloseFailure(true);
 
@@ -444,7 +446,8 @@ public class BasePolarisCatalog extends BaseMetastoreViewCatalog
           "Scheduled cleanup task {} for table {}",
           dropEntityResult.getCleanupTaskId(),
           tableIdentifier);
-      taskExecutor.addTaskHandlerContext(dropEntityResult.getCleanupTaskId(), callContext);
+      taskExecutor.addTaskHandlerContext(
+          dropEntityResult.getCleanupTaskId(), CallContext.getCurrentContext());
     }
 
     return true;
@@ -1151,14 +1154,15 @@ public class BasePolarisCatalog extends BaseMetastoreViewCatalog
             siblingLocation -> {
               if (targetLocation.isChildOf(siblingLocation)
                   || siblingLocation.isChildOf(targetLocation)) {
-                throw new ForbiddenException(
+                throw new org.apache.iceberg.exceptions.ForbiddenException(
                     "Unable to create table at location '%s' because it conflicts with existing table or namespace at location '%s'",
                     targetLocation, siblingLocation);
               }
             });
   }
 
-  private class BasePolarisCatalogTableBuilder extends BaseMetastoreViewCatalogTableBuilder {
+  private class BasePolarisCatalogTableBuilder
+      extends BaseMetastoreViewCatalog.BaseMetastoreViewCatalogTableBuilder {
 
     public BasePolarisCatalogTableBuilder(TableIdentifier identifier, Schema schema) {
       super(identifier, schema);
@@ -1170,7 +1174,7 @@ public class BasePolarisCatalog extends BaseMetastoreViewCatalog
     }
   }
 
-  private class BasePolarisCatalogViewBuilder extends BaseViewBuilder {
+  private class BasePolarisCatalogViewBuilder extends BaseMetastoreViewCatalog.BaseViewBuilder {
 
     public BasePolarisCatalogViewBuilder(TableIdentifier identifier) {
       super(identifier);
@@ -2096,12 +2100,9 @@ public class BasePolarisCatalog extends BaseMetastoreViewCatalog
   }
 
   private static boolean isAccessDenied(String errorMsg) {
-    // corresponding error messages for storage providers Aws/Azure/Gcp
+    // Corresponding error messages for storage providers Aws/Azure/Gcp
     boolean isAccessDenied =
-        errorMsg != null
-            && (errorMsg.contains("Access Denied")
-                || errorMsg.contains("This request is not authorized to perform this operation")
-                || errorMsg.contains("Forbidden"));
+        errorMsg != null && IcebergExceptionMapper.containsAnyAccessDeniedHint(errorMsg);
     if (isAccessDenied) {
       LOGGER.debug("Access Denied or Forbidden error: {}", errorMsg);
       return true;

@@ -21,10 +21,8 @@ package org.apache.polaris.service.auth;
 import io.quarkus.arc.lookup.LookupIfProperty;
 import jakarta.enterprise.context.RequestScoped;
 import java.time.Duration;
-import org.apache.polaris.core.PolarisCallContext;
-import org.apache.polaris.core.context.CallContext;
 import org.apache.polaris.core.context.RealmContext;
-import org.apache.polaris.service.config.RealmEntityManagerFactory;
+import org.apache.polaris.core.persistence.MetaStoreManagerFactory;
 import org.apache.polaris.service.config.RuntimeCandidate;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
@@ -35,29 +33,21 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
     stringValue = "rsa-key-pair")
 public class JWTRSAKeyPairFactory implements TokenBrokerFactory {
 
-  private final RealmEntityManagerFactory realmEntityManagerFactory;
-  private final PolarisCallContext polarisCallContext;
+  private final MetaStoreManagerFactory metaStoreManagerFactory;
   private final Duration maxTokenGenerationInSeconds;
-  private final KeyProvider keyProvider;
 
   public JWTRSAKeyPairFactory(
-      RealmEntityManagerFactory realmEntityManagerFactory,
-      CallContext callContext,
-      KeyProvider keyProvider,
+      MetaStoreManagerFactory metaStoreManagerFactory,
       @ConfigProperty(name = "polaris.authentication.token-broker-factory.max-token-generation")
           Duration maxTokenGenerationInSeconds) {
-    this.polarisCallContext = callContext.getPolarisCallContext();
+    this.metaStoreManagerFactory = metaStoreManagerFactory;
     this.maxTokenGenerationInSeconds = maxTokenGenerationInSeconds;
-    this.realmEntityManagerFactory = realmEntityManagerFactory;
-    this.keyProvider = keyProvider;
   }
 
   @Override
   public TokenBroker apply(RealmContext realmContext) {
     return new JWTRSAKeyPair(
-        realmEntityManagerFactory.getOrCreateEntityManager(realmContext),
-        polarisCallContext,
-        keyProvider,
+        metaStoreManagerFactory.getOrCreateMetaStoreManager(realmContext),
         (int) maxTokenGenerationInSeconds.toSeconds());
   }
 }

@@ -52,6 +52,7 @@ import org.apache.polaris.core.auth.PolarisAuthorizer;
 import org.apache.polaris.core.context.CallContext;
 import org.apache.polaris.core.context.RealmContext;
 import org.apache.polaris.core.entity.PolarisEntity;
+import org.apache.polaris.core.persistence.MetaStoreManagerFactory;
 import org.apache.polaris.core.persistence.PolarisEntityManager;
 import org.apache.polaris.core.persistence.cache.EntityCacheEntry;
 import org.apache.polaris.core.persistence.resolver.Resolver;
@@ -73,26 +74,26 @@ import org.apache.polaris.service.types.NotificationRequest;
 public class IcebergCatalogAdapter
     implements IcebergRestCatalogApiService, IcebergRestConfigurationApiService {
 
-  private final CallContext callContext;
   private final CallContextCatalogFactory catalogFactory;
+  private final MetaStoreManagerFactory metaStoreManagerFactory;
   private final RealmEntityManagerFactory entityManagerFactory;
   private final PolarisAuthorizer polarisAuthorizer;
 
   @Inject
   public IcebergCatalogAdapter(
-      CallContext callContext,
       CallContextCatalogFactory catalogFactory,
       RealmEntityManagerFactory entityManagerFactory,
+      MetaStoreManagerFactory metaStoreManagerFactory,
       PolarisAuthorizer polarisAuthorizer) {
-    this.callContext = callContext;
     this.catalogFactory = catalogFactory;
     this.entityManagerFactory = entityManagerFactory;
+    this.metaStoreManagerFactory = metaStoreManagerFactory;
     this.polarisAuthorizer = polarisAuthorizer;
-    CallContext.setCurrentContext(callContext);
   }
 
   private PolarisCatalogHandlerWrapper newHandlerWrapper(
       SecurityContext securityContext, String catalogName) {
+    CallContext callContext = CallContext.getCurrentContext();
     AuthenticatedPolarisPrincipal authenticatedPrincipal =
         (AuthenticatedPolarisPrincipal) securityContext.getUserPrincipal();
     if (authenticatedPrincipal == null) {
@@ -105,6 +106,7 @@ public class IcebergCatalogAdapter
     return new PolarisCatalogHandlerWrapper(
         callContext,
         entityManager,
+        metaStoreManagerFactory.getOrCreateMetaStoreManager(callContext.getRealmContext()),
         authenticatedPrincipal,
         catalogFactory,
         catalogName,
@@ -443,7 +445,8 @@ public class IcebergCatalogAdapter
     // TODO: Push this down into PolarisCatalogHandlerWrapper for authorizing "any" catalog
     // role in this catalog.
     PolarisEntityManager entityManager =
-        entityManagerFactory.getOrCreateEntityManager(callContext.getRealmContext());
+        entityManagerFactory.getOrCreateEntityManager(
+            CallContext.getCurrentContext().getRealmContext());
     AuthenticatedPolarisPrincipal authenticatedPrincipal =
         (AuthenticatedPolarisPrincipal) securityContext.getUserPrincipal();
     if (authenticatedPrincipal == null) {
@@ -453,7 +456,8 @@ public class IcebergCatalogAdapter
       throw new BadRequestException("Please specify a warehouse");
     }
     Resolver resolver =
-        entityManager.prepareResolver(callContext, authenticatedPrincipal, warehouse);
+        entityManager.prepareResolver(
+            CallContext.getCurrentContext(), authenticatedPrincipal, warehouse);
     ResolverStatus resolverStatus = resolver.resolveAll();
     if (!resolverStatus.getStatus().equals(ResolverStatus.StatusEnum.SUCCESS)) {
       throw new NotFoundException("Unable to find warehouse %s", warehouse);
