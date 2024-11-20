@@ -29,7 +29,6 @@ import jakarta.enterprise.inject.Vetoed;
 import jakarta.enterprise.inject.spi.CDI;
 import jakarta.inject.Inject;
 import java.io.IOException;
-import java.lang.reflect.Method;
 import java.time.Clock;
 import java.util.Date;
 import java.util.List;
@@ -174,7 +173,8 @@ public abstract class PolarisAuthzTestBase {
         CDI.current().select(RealmEntityManagerFactory.class).get();
     TaskExecutor taskExecutor = CDI.current().select(TaskExecutor.class).get();
     FileIOFactory fileIOFactory = CDI.current().select(FileIOFactory.class).get();
-    MetaStoreManagerFactory metaStoreManagerFactory = CDI.current().select(MetaStoreManagerFactory.class).get();
+    MetaStoreManagerFactory metaStoreManagerFactory =
+        CDI.current().select(MetaStoreManagerFactory.class).get();
     TestPolarisCallContextCatalogFactory m =
         new TestPolarisCallContextCatalogFactory(
             realmEntityManagerFactory, metaStoreManagerFactory, taskExecutor, fileIOFactory);
@@ -187,22 +187,20 @@ public abstract class PolarisAuthzTestBase {
     metaStoreManager = managerFactory.getOrCreateMetaStoreManager(realmContext);
 
     Map<String, Object> configMap =
-            Map.of(
-                    "ALLOW_SPECIFYING_FILE_IO_IMPL", true, "ALLOW_EXTERNAL_METADATA_FILE_LOCATION", true);
+        Map.of(
+            "ALLOW_SPECIFYING_FILE_IO_IMPL", true, "ALLOW_EXTERNAL_METADATA_FILE_LOCATION", true);
     polarisContext =
-            new PolarisCallContext(
-                    metaStoreManagerFactory.getOrCreateSessionSupplier(realmContext).get(),
-                    diagServices,
-                    new PolarisConfigurationStore() {
-                      @Override
-                      public <T> @Nullable T getConfiguration(PolarisCallContext ctx, String configName) {
-                        return (T) configMap.get(configName);
-                      }
-                    },
-                    Clock.systemDefaultZone());
-    this.entityManager =
-        new PolarisEntityManager(
-            metaStoreManager, new StorageCredentialCache());
+        new PolarisCallContext(
+            metaStoreManagerFactory.getOrCreateSessionSupplier(realmContext).get(),
+            diagServices,
+            new PolarisConfigurationStore() {
+              @Override
+              public <T> @Nullable T getConfiguration(PolarisCallContext ctx, String configName) {
+                return (T) configMap.get(configName);
+              }
+            },
+            Clock.systemDefaultZone());
+    this.entityManager = new PolarisEntityManager(metaStoreManager, new StorageCredentialCache());
 
     callContext =
         CallContext.of(
@@ -353,8 +351,8 @@ public abstract class PolarisAuthzTestBase {
         callContext.getPolarisCallContext(),
         credentials.getClientId(),
         lookupEntity.getEntity().getId(),
-        credentials.getClientSecret(),
-        false);
+        false,
+        credentials.getClientSecret());
 
     return new PrincipalEntity(
         PolarisEntity.of(

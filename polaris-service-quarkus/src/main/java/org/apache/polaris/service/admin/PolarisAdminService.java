@@ -856,8 +856,8 @@ public class PolarisAdminService {
                 getCurrentPolarisContext(),
                 currentPrincipalEntity.getClientId(),
                 currentPrincipalEntity.getId(),
-                currentSecrets.getMainSecret(),
-                shouldReset)
+                shouldReset,
+                currentSecrets.getMainSecret())
             .getPrincipalSecrets();
     if (newSecrets == null) {
       throw new IllegalStateException(

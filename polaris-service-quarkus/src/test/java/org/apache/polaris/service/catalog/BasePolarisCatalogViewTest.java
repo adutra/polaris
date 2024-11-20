@@ -107,8 +107,7 @@ public class BasePolarisCatalogViewTest extends ViewCatalogTests<BasePolarisCata
             Clock.systemDefaultZone());
 
     PolarisEntityManager entityManager =
-        new PolarisEntityManager(
-            metaStoreManager, polarisContext::getMetaStore, new StorageCredentialCache());
+        new PolarisEntityManager(metaStoreManager, new StorageCredentialCache());
 
     CallContext callContext = CallContext.of(realmContext, polarisContext);
     CallContext.setCurrentContext(callContext);
@@ -116,8 +115,7 @@ public class BasePolarisCatalogViewTest extends ViewCatalogTests<BasePolarisCata
     PrincipalEntity rootEntity =
         new PrincipalEntity(
             PolarisEntity.of(
-                entityManager
-                    .getMetaStoreManager()
+                metaStoreManager
                     .readEntityByName(
                         polarisContext,
                         null,
@@ -132,6 +130,7 @@ public class BasePolarisCatalogViewTest extends ViewCatalogTests<BasePolarisCata
         new PolarisAdminService(
             callContext,
             entityManager,
+            metaStoreManager,
             authenticatedRoot,
             new PolarisAuthorizerImpl(new PolarisConfigurationStore() {}));
     adminService.createCatalog(
@@ -153,6 +152,7 @@ public class BasePolarisCatalogViewTest extends ViewCatalogTests<BasePolarisCata
     this.catalog =
         new BasePolarisCatalog(
             entityManager,
+            metaStoreManager,
             callContext,
             passthroughView,
             authenticatedRoot,
