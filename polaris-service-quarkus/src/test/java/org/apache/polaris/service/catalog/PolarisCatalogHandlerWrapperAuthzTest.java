@@ -1684,7 +1684,7 @@ public class PolarisCatalogHandlerWrapperAuthzTest extends PolarisAuthzTestBase 
                 return entityManager;
               }
             },
-            metaStoreManagerFactory,
+            managerFactory,
             Mockito.mock(),
             new DefaultFileIOFactory()) {
           @Override

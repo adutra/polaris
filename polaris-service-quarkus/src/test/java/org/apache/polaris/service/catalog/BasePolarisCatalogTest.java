@@ -295,8 +295,7 @@ public class BasePolarisCatalogTest extends CatalogTests<BasePolarisCatalog> {
       public void setMetricRegistry(PolarisMetricRegistry metricRegistry) {}
 
       @Override
-      public Map<String, PrincipalSecretsResult> bootstrapRealms(
-          List<String> realms) {
+      public Map<String, PrincipalSecretsResult> bootstrapRealms(List<String> realms) {
         throw new NotImplementedException("Bootstrapping realms is not supported");
       }
 

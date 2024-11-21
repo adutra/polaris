@@ -30,8 +30,15 @@ import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.SecurityContext;
 import jakarta.ws.rs.ext.Provider;
 import java.security.Principal;
+import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Optional;
+import java.util.stream.Collectors;
 import org.apache.polaris.core.auth.AuthenticatedPolarisPrincipal;
+import org.apache.polaris.core.context.CallContext;
+import org.apache.polaris.core.context.RealmContext;
+import org.apache.polaris.service.context.CallContextResolver;
+import org.apache.polaris.service.context.RealmContextResolver;
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -53,6 +60,8 @@ public class OAuthCredentialAuthFilter implements ContainerRequestFilter {
   public static final String OAUTH_ACCESS_TOKEN_PARAM = "access_token";
 
   @Inject Authenticator<String, AuthenticatedPolarisPrincipal> authenticator;
+  @Inject RealmContextResolver realmContextResolver;
+  @Inject CallContextResolver callContextResolver;
 
   @Override
   public void filter(ContainerRequestContext requestContext) {
@@ -115,6 +124,27 @@ public class OAuthCredentialAuthFilter implements ContainerRequestFilter {
       if (credentials == null) {
         return false;
       }
+
+      String path = requestContext.getUriInfo().getPath().substring(1);
+      Map<String, String> queryParams =
+          requestContext.getUriInfo().getQueryParameters().entrySet().stream()
+              .collect(Collectors.toMap(Entry::getKey, (e) -> e.getValue().getFirst()));
+      Map<String, String> headers =
+          requestContext.getHeaders().entrySet().stream()
+              .collect(Collectors.toMap(Map.Entry::getKey, (e) -> e.getValue().getFirst()));
+      RealmContext currentRealmContext =
+          realmContextResolver.resolveRealmContext(
+              requestContext.getUriInfo().getRequestUri().toString(),
+              requestContext.getMethod(),
+              path,
+              queryParams,
+              headers);
+      @SuppressWarnings("resource")
+      CallContext currentCallContext =
+          callContextResolver.resolveCallContext(
+              currentRealmContext, requestContext.getMethod(), path, queryParams, headers);
+
+      CallContext.setCurrentContext(currentCallContext);
 
       final Optional<AuthenticatedPolarisPrincipal> principal =
           authenticator.authenticate(credentials);

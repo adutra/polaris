@@ -77,7 +77,6 @@ import org.apache.polaris.service.config.DefaultConfigurationStore;
 import org.apache.polaris.service.config.RealmEntityManagerFactory;
 import org.apache.polaris.service.context.CallContextCatalogFactory;
 import org.apache.polaris.service.context.PolarisCallContextCatalogFactory;
-import org.apache.polaris.service.persistence.InMemoryPolarisMetaStoreManagerFactory;
 import org.apache.polaris.service.storage.PolarisStorageIntegrationProviderImpl;
 import org.apache.polaris.service.task.TaskExecutor;
 import org.assertj.core.api.Assertions;
@@ -147,7 +146,6 @@ public abstract class PolarisAuthzTestBase {
                   true)));
 
   @Inject protected MetaStoreManagerFactory managerFactory;
-  @Inject protected PolarisConfigurationStore configurationStore;
   @Inject protected CallContextCatalogFactory callContextCatalogFactory;
   @Inject protected PolarisDiagnostics diagServices;
 
@@ -159,7 +157,6 @@ public abstract class PolarisAuthzTestBase {
   protected PrincipalEntity principalEntity;
   protected CallContext callContext;
   protected AuthenticatedPolarisPrincipal authenticatedRoot;
-  protected InMemoryPolarisMetaStoreManagerFactory metaStoreManagerFactory;
 
   private PolarisCallContext polarisContext;
 
@@ -183,7 +180,7 @@ public abstract class PolarisAuthzTestBase {
 
   @BeforeEach
   public void before(TestInfo testInfo) {
-    RealmContext realmContext = () -> "realm";
+    RealmContext realmContext = testInfo::getDisplayName;
     metaStoreManager = managerFactory.getOrCreateMetaStoreManager(realmContext);
 
     Map<String, Object> configMap =
@@ -191,7 +188,7 @@ public abstract class PolarisAuthzTestBase {
             "ALLOW_SPECIFYING_FILE_IO_IMPL", true, "ALLOW_EXTERNAL_METADATA_FILE_LOCATION", true);
     polarisContext =
         new PolarisCallContext(
-            metaStoreManagerFactory.getOrCreateSessionSupplier(realmContext).get(),
+            managerFactory.getOrCreateSessionSupplier(realmContext).get(),
             diagServices,
             new PolarisConfigurationStore() {
               @Override
@@ -241,6 +238,7 @@ public abstract class PolarisAuthzTestBase {
         adminService.createCatalog(
             new CatalogEntity.Builder()
                 .setName(CATALOG_NAME)
+                .setCatalogType("INTERNAL")
                 .setDefaultBaseLocation(storageLocation)
                 .setStorageConfigurationInfo(storageConfigModel, storageLocation)
                 .build());
@@ -352,7 +350,7 @@ public abstract class PolarisAuthzTestBase {
         credentials.getClientId(),
         lookupEntity.getEntity().getId(),
         false,
-        credentials.getClientSecret());
+        credentials.getClientSecret()); // This should actually be the secret's hash
 
     return new PrincipalEntity(
         PolarisEntity.of(
