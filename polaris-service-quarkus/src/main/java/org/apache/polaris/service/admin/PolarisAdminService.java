@@ -60,6 +60,7 @@ import org.apache.polaris.core.admin.model.ViewPrivilege;
 import org.apache.polaris.core.auth.AuthenticatedPolarisPrincipal;
 import org.apache.polaris.core.auth.PolarisAuthorizableOperation;
 import org.apache.polaris.core.auth.PolarisAuthorizer;
+import org.apache.polaris.core.auth.PolarisGrantManager.LoadGrantsResult;
 import org.apache.polaris.core.catalog.PolarisCatalogHelpers;
 import org.apache.polaris.core.context.CallContext;
 import org.apache.polaris.core.entity.CatalogEntity;
@@ -1191,7 +1192,7 @@ public class PolarisAdminService {
     PolarisEntity principalEntity =
         findPrincipalByName(principalName)
             .orElseThrow(() -> new NotFoundException("Principal %s not found", principalName));
-    PolarisMetaStoreManager.LoadGrantsResult grantList =
+    LoadGrantsResult grantList =
         metaStoreManager.loadGrantsToGrantee(
             getCurrentPolarisContext(), principalEntity.getCatalogId(), principalEntity.getId());
     return buildEntitiesFromGrantResults(grantList, false, null);
@@ -1255,7 +1256,7 @@ public class PolarisAdminService {
         findPrincipalRoleByName(principalRoleName)
             .orElseThrow(
                 () -> new NotFoundException("PrincipalRole %s not found", principalRoleName));
-    PolarisMetaStoreManager.LoadGrantsResult grantList =
+    LoadGrantsResult grantList =
         metaStoreManager.loadGrantsOnSecurable(
             getCurrentPolarisContext(),
             principalRoleEntity.getCatalogId(),
@@ -1274,7 +1275,7 @@ public class PolarisAdminService {
    * @return list of grantees or securables matching the filter
    */
   private List<PolarisEntity> buildEntitiesFromGrantResults(
-      @Nonnull PolarisMetaStoreManager.LoadGrantsResult grantList,
+      @Nonnull LoadGrantsResult grantList,
       boolean grantees,
       @Nullable Function<PolarisGrantRecord, Boolean> grantFilter) {
     Map<Long, PolarisBaseEntity> granteeMap = grantList.getEntitiesAsMap();
@@ -1308,7 +1309,7 @@ public class PolarisAdminService {
         findPrincipalRoleByName(principalRoleName)
             .orElseThrow(
                 () -> new NotFoundException("PrincipalRole %s not found", principalRoleName));
-    PolarisMetaStoreManager.LoadGrantsResult grantList =
+    LoadGrantsResult grantList =
         metaStoreManager.loadGrantsToGrantee(
             getCurrentPolarisContext(),
             principalRoleEntity.getCatalogId(),
@@ -1534,7 +1535,7 @@ public class PolarisAdminService {
     PolarisEntity catalogRoleEntity =
         findCatalogRoleByName(catalogName, catalogRoleName)
             .orElseThrow(() -> new NotFoundException("CatalogRole %s not found", catalogRoleName));
-    PolarisMetaStoreManager.LoadGrantsResult grantList =
+    LoadGrantsResult grantList =
         metaStoreManager.loadGrantsOnSecurable(
             getCurrentPolarisContext(),
             catalogRoleEntity.getCatalogId(),
@@ -1553,7 +1554,7 @@ public class PolarisAdminService {
     PolarisEntity catalogRoleEntity =
         findCatalogRoleByName(catalogName, catalogRoleName)
             .orElseThrow(() -> new NotFoundException("CatalogRole %s not found", catalogRoleName));
-    PolarisMetaStoreManager.LoadGrantsResult grantList =
+    LoadGrantsResult grantList =
         metaStoreManager.loadGrantsToGrantee(
             getCurrentPolarisContext(),
             catalogRoleEntity.getCatalogId(),

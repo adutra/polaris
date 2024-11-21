@@ -95,11 +95,7 @@ import org.apache.polaris.core.persistence.resolver.PolarisResolutionManifest;
 import org.apache.polaris.core.persistence.resolver.PolarisResolutionManifestCatalogView;
 import org.apache.polaris.core.persistence.resolver.ResolverPath;
 import org.apache.polaris.core.persistence.resolver.ResolverStatus;
-import org.apache.polaris.core.storage.InMemoryStorageIntegration;
-import org.apache.polaris.core.storage.PolarisStorageActions;
-import org.apache.polaris.core.storage.PolarisStorageConfigurationInfo;
-import org.apache.polaris.core.storage.PolarisStorageIntegration;
-import org.apache.polaris.core.storage.StorageLocation;
+import org.apache.polaris.core.storage.*;
 import org.apache.polaris.core.storage.aws.PolarisS3FileIOClientFactory;
 import org.apache.polaris.service.catalog.io.FileIOFactory;
 import org.apache.polaris.service.exception.IcebergExceptionMapper;
@@ -892,7 +888,7 @@ public class BasePolarisCatalog extends BaseMetastoreViewCatalog
         entityManager
             .getCredentialCache()
             .getOrGenerateSubScopeCreds(
-                getMetaStoreManager(),
+                getCredentialVendor(),
                 callContext.getPolarisCallContext(),
                 entity,
                 allowList,
@@ -1620,6 +1616,10 @@ public class BasePolarisCatalog extends BaseMetastoreViewCatalog
   }
 
   private PolarisMetaStoreManager getMetaStoreManager() {
+    return metaStoreManager;
+  }
+
+  private PolarisCredentialVendor getCredentialVendor() {
     return metaStoreManager;
   }
 

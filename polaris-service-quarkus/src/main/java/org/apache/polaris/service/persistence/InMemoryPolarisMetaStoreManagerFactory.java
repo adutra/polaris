@@ -29,6 +29,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Supplier;
 import org.apache.polaris.core.PolarisDiagnostics;
+import org.apache.polaris.core.auth.PolarisSecretsManager.PrincipalSecretsResult;
 import org.apache.polaris.core.context.RealmContext;
 import org.apache.polaris.core.persistence.*;
 import org.apache.polaris.core.storage.PolarisStorageIntegrationProvider;
@@ -91,11 +92,11 @@ public class InMemoryPolarisMetaStoreManagerFactory
   }
 
   private void bootstrapRealmAndPrintCredentials(String realmId) {
-    Map<String, PolarisMetaStoreManager.PrincipalSecretsResult> results =
+    Map<String, PrincipalSecretsResult> results =
         this.bootstrapRealms(Collections.singletonList(realmId));
     bootstrappedRealms.add(realmId);
 
-    PolarisMetaStoreManager.PrincipalSecretsResult principalSecrets = results.get(realmId);
+    PrincipalSecretsResult principalSecrets = results.get(realmId);
 
     String msg =
         String.format(
