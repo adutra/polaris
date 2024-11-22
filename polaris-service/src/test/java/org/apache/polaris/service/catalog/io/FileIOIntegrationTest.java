@@ -25,10 +25,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.azure.core.exception.AzureException;
 import com.google.cloud.storage.StorageException;
 import com.google.common.collect.Iterators;
-import io.dropwizard.testing.ConfigOverride;
-import io.dropwizard.testing.ResourceHelpers;
-import io.dropwizard.testing.junit5.DropwizardAppExtension;
-import io.dropwizard.testing.junit5.DropwizardExtensionsSupport;
+import io.quarkus.test.junit.QuarkusMock;
+import io.quarkus.test.junit.QuarkusTest;
+import jakarta.inject.Inject;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
@@ -51,51 +50,37 @@ import org.apache.polaris.core.admin.model.Catalog;
 import org.apache.polaris.core.admin.model.FileStorageConfigInfo;
 import org.apache.polaris.core.admin.model.PolarisCatalog;
 import org.apache.polaris.core.admin.model.StorageConfigInfo;
-import org.apache.polaris.service.PolarisApplication;
 import org.apache.polaris.service.catalog.TestUtil;
-import org.apache.polaris.service.config.PolarisApplicationConfig;
 import org.apache.polaris.service.exception.IcebergExceptionMapper;
-import org.apache.polaris.service.test.PolarisConnectionExtension;
-import org.apache.polaris.service.test.PolarisRealm;
-import org.apache.polaris.service.test.SnowmanCredentialsExtension;
-import org.apache.polaris.service.test.TestEnvironmentExtension;
+import org.apache.polaris.service.test.PolarisIntegrationTestHelper;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.TestInfo;
+import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.api.TestInstance.Lifecycle;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 
 /** Collection of File IO integration tests */
-@ExtendWith({
-  DropwizardExtensionsSupport.class,
-  TestEnvironmentExtension.class,
-  PolarisConnectionExtension.class,
-  SnowmanCredentialsExtension.class
-})
+@QuarkusTest
+@TestInstance(Lifecycle.PER_CLASS)
 public class FileIOIntegrationTest {
-  private static final DropwizardAppExtension<PolarisApplicationConfig> EXT =
-      new DropwizardAppExtension<>(
-          PolarisApplication.class,
-          ResourceHelpers.resourceFilePath("polaris-server-integrationtest.yml"),
-          ConfigOverride.config(
-              "server.applicationConnectors[0].port",
-              "0"), // Bind to random port to support parallelism
-          ConfigOverride.config("server.adminConnectors[0].port", "0"),
-          ConfigOverride.config("io.factoryType", "test"));
 
   private static final String catalogBaseLocation = "file:/tmp/buckets/my-bucket/path/to/data";
-  private static TestFileIOFactory ioFactory;
+
   private static RESTCatalog restCatalog;
   private static Table table;
 
+  @Inject PolarisIntegrationTestHelper testHelper;
+  @Inject FileIOFactory ioFactory;
+
   @BeforeAll
-  public static void beforeAll(
-      PolarisConnectionExtension.PolarisToken adminToken,
-      SnowmanCredentialsExtension.SnowmanCredentials snowmanCredentials,
-      @PolarisRealm String realm) {
-    ioFactory = (TestFileIOFactory) EXT.getConfiguration().getFileIOFactory();
+  public void beforeAll(TestInfo testInfo) {
+    testHelper.setUp(testInfo);
+    QuarkusMock.installMockForType(new TestFileIOFactory(), FileIOFactory.class);
 
     FileStorageConfigInfo storageConfigInfo =
         FileStorageConfigInfo.builder()
@@ -112,9 +97,7 @@ public class FileIOIntegrationTest {
             .setStorageConfigInfo(storageConfigInfo)
             .build();
 
-    restCatalog =
-        TestUtil.createSnowmanManagedCatalog(
-            EXT, adminToken, snowmanCredentials, realm, catalog, Map.of());
+    restCatalog = TestUtil.createSnowmanManagedCatalog(testHelper, catalog, Map.of());
 
     Namespace namespace = Namespace.of("myns");
     restCatalog.createNamespace(namespace);
@@ -126,6 +109,11 @@ public class FileIOIntegrationTest {
                 TableIdentifier.of(namespace, tableName),
                 new Schema(required(3, "id", Types.IntegerType.get(), "mydoc")))
             .create();
+  }
+
+  @AfterAll
+  public void tearDown() {
+    testHelper.tearDown();
   }
 
   @Test
@@ -153,11 +141,12 @@ public class FileIOIntegrationTest {
   @ParameterizedTest
   @MethodSource("getIOExceptionTypeTestConfigs")
   void testIOExceptionExceptionTypes(int uniqueId, IOExceptionTypeTestConfig<?> config) {
-    ioFactory.loadFileIOExceptionSupplier = config.loadFileIOExceptionSupplier;
-    ioFactory.newInputFileExceptionSupplier = config.newInputFileExceptionSupplier;
-    ioFactory.newOutputFileExceptionSupplier = config.newOutputFileExceptionSupplier;
+    TestFileIOFactory testIOFactory = (TestFileIOFactory) ioFactory;
+    testIOFactory.loadFileIOExceptionSupplier = config.loadFileIOExceptionSupplier;
+    testIOFactory.newInputFileExceptionSupplier = config.newInputFileExceptionSupplier;
+    testIOFactory.newOutputFileExceptionSupplier = config.newOutputFileExceptionSupplier;
 
-    assertThrows(config.expectedException, () -> config.workload.run(uniqueId));
+    assertThrows(ForbiddenException.class, () -> config.workload.run(uniqueId));
   }
 
   private static Stream<Arguments> getIOExceptionTypeTestConfigs() {
@@ -166,7 +155,6 @@ public class FileIOIntegrationTest {
     List<IOExceptionTypeTestConfig<?>> configs =
         Stream.of(
                 IOExceptionTypeTestConfig.allVariants(
-                    ForbiddenException.class,
                     () ->
                         S3Exception.builder()
                             .statusCode(403)
@@ -174,15 +162,12 @@ public class FileIOIntegrationTest {
                             .build(),
                     FileIOIntegrationTest::workloadCreateTable),
                 IOExceptionTypeTestConfig.allVariants(
-                    ForbiddenException.class,
                     () -> new AzureException(accessDeniedHint.next()),
                     FileIOIntegrationTest::workloadCreateTable),
                 IOExceptionTypeTestConfig.allVariants(
-                    ForbiddenException.class,
                     () -> new StorageException(403, accessDeniedHint.next()),
                     FileIOIntegrationTest::workloadCreateTable),
                 IOExceptionTypeTestConfig.allVariants(
-                    ForbiddenException.class,
                     () ->
                         S3Exception.builder()
                             .statusCode(403)
@@ -190,11 +175,9 @@ public class FileIOIntegrationTest {
                             .build(),
                     FileIOIntegrationTest::workloadUpdateTableProperties),
                 IOExceptionTypeTestConfig.allVariants(
-                    ForbiddenException.class,
                     () -> new AzureException(accessDeniedHint.next()),
                     FileIOIntegrationTest::workloadUpdateTableProperties),
                 IOExceptionTypeTestConfig.allVariants(
-                    ForbiddenException.class,
                     () -> new StorageException(403, accessDeniedHint.next()),
                     FileIOIntegrationTest::workloadUpdateTableProperties))
             .flatMap(Collection::stream)
@@ -222,7 +205,6 @@ public class FileIOIntegrationTest {
    * particular IO operation fails with the given exception specified by the Suppliers.
    */
   record IOExceptionTypeTestConfig<T extends Throwable>(
-      Class<T> expectedException,
       Optional<Supplier<RuntimeException>> loadFileIOExceptionSupplier,
       Optional<Supplier<RuntimeException>> newInputFileExceptionSupplier,
       Optional<Supplier<RuntimeException>> newOutputFileExceptionSupplier,
@@ -237,26 +219,14 @@ public class FileIOIntegrationTest {
      * possible step of the IO
      */
     static <T extends Throwable> Collection<IOExceptionTypeTestConfig<T>> allVariants(
-        Class<T> exceptionType, Supplier<RuntimeException> exceptionSupplier, Workload workload) {
+        Supplier<RuntimeException> exceptionSupplier, Workload workload) {
       return List.of(
           new IOExceptionTypeTestConfig<>(
-              exceptionType,
-              Optional.of(exceptionSupplier),
-              Optional.empty(),
-              Optional.empty(),
-              workload),
+              Optional.of(exceptionSupplier), Optional.empty(), Optional.empty(), workload),
           new IOExceptionTypeTestConfig<>(
-              exceptionType,
-              Optional.empty(),
-              Optional.of(exceptionSupplier),
-              Optional.empty(),
-              workload),
+              Optional.empty(), Optional.of(exceptionSupplier), Optional.empty(), workload),
           new IOExceptionTypeTestConfig<>(
-              exceptionType,
-              Optional.empty(),
-              Optional.empty(),
-              Optional.of(exceptionSupplier),
-              workload));
+              Optional.empty(), Optional.empty(), Optional.of(exceptionSupplier), workload));
     }
   }
 }

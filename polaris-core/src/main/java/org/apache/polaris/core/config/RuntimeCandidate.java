@@ -16,13 +16,23 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.polaris.service.auth;
+package org.apache.polaris.core.config;
 
-import java.util.function.Function;
-import org.apache.polaris.core.context.RealmContext;
+import static java.lang.annotation.ElementType.FIELD;
+import static java.lang.annotation.ElementType.METHOD;
+import static java.lang.annotation.ElementType.PARAMETER;
+import static java.lang.annotation.ElementType.TYPE;
+import static java.lang.annotation.RetentionPolicy.RUNTIME;
 
-/**
- * Factory that creates a {@link TokenBroker} for generating and parsing. The {@link TokenBroker} is
- * created based on the realm context.
- */
-public interface TokenBrokerFactory extends Function<RealmContext, TokenBroker> {}
+import jakarta.inject.Qualifier;
+import java.lang.annotation.Documented;
+import java.lang.annotation.Retention;
+import java.lang.annotation.Target;
+
+/** Qualifier for candidate beans that are resolved at runtime based on configuration properties. */
+@Qualifier
+@Retention(RUNTIME)
+@Target({TYPE, METHOD, FIELD, PARAMETER})
+@Documented
+// FIXME remove or replace
+public @interface RuntimeCandidate {}

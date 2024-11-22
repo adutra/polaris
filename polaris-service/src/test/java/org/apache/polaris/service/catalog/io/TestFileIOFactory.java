@@ -18,7 +18,7 @@
  */
 package org.apache.polaris.service.catalog.io;
 
-import com.fasterxml.jackson.annotation.JsonTypeName;
+import jakarta.enterprise.inject.Vetoed;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -32,8 +32,8 @@ import org.apache.iceberg.io.FileIO;
  * A FileIOFactory that measures the number of bytes read, files written, and files deleted. It can
  * inject exceptions at various parts of the IO construction.
  */
-@JsonTypeName("test")
-public class TestFileIOFactory implements FileIOFactory {
+@Vetoed
+public class TestFileIOFactory extends DefaultFileIOFactory {
   private final List<TestFileIO> ios = new ArrayList<>();
 
   // When present, the following will be used to throw exceptions at various parts of the IO

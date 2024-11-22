@@ -19,7 +19,10 @@
 package org.apache.polaris.service.auth;
 
 import com.google.common.base.Splitter;
-import io.dropwizard.auth.AuthenticationException;
+import io.quarkus.arc.lookup.LookupIfProperty;
+import io.quarkus.security.AuthenticationFailedException;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
@@ -27,15 +30,17 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 import org.apache.polaris.core.PolarisCallContext;
 import org.apache.polaris.core.auth.AuthenticatedPolarisPrincipal;
+import org.apache.polaris.core.config.RuntimeCandidate;
 import org.apache.polaris.core.context.CallContext;
 import org.apache.polaris.core.entity.PolarisPrincipalSecrets;
+import org.apache.polaris.core.persistence.MetaStoreManagerFactory;
 import org.apache.polaris.core.persistence.PolarisMetaStoreManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * {@link io.dropwizard.auth.Authenticator} that parses a token as a sequence of key/value pairs.
- * Specifically, we expect to find
+ * Authenticator that parses a token as a sequence of key/value pairs. Specifically, we expect to
+ * find
  *
  * <ul>
  *   <li>principal - the clientId of the principal
@@ -45,13 +50,27 @@ import org.slf4j.LoggerFactory;
  * This class does not expect a client to be either present or correct. Lookup is delegated to the
  * {@link PolarisMetaStoreManager} for the current realm.
  */
+@ApplicationScoped
+@RuntimeCandidate
+@LookupIfProperty(name = "polaris.authentication.type", stringValue = "test")
 public class TestInlineBearerTokenPolarisAuthenticator extends BasePolarisAuthenticator {
   private static final Logger LOGGER =
       LoggerFactory.getLogger(TestInlineBearerTokenPolarisAuthenticator.class);
 
+  // Required for CDI
+  public TestInlineBearerTokenPolarisAuthenticator() {
+    this(null);
+  }
+
+  @Inject
+  public TestInlineBearerTokenPolarisAuthenticator(
+      MetaStoreManagerFactory metaStoreManagerFactory) {
+    super(metaStoreManagerFactory);
+  }
+
   @Override
   public Optional<AuthenticatedPolarisPrincipal> authenticate(String credentials)
-      throws AuthenticationException {
+      throws AuthenticationFailedException {
     Map<String, String> properties = extractPrincipal(credentials);
     PolarisMetaStoreManager metaStoreManager =
         metaStoreManagerFactory.getOrCreateMetaStoreManager(

@@ -23,6 +23,7 @@ fun isValidDep(dep: String): Boolean {
 }
 
 plugins {
+  alias(libs.plugins.quarkus)
   id("polaris-server")
   `java-library`
 }
@@ -30,8 +31,8 @@ plugins {
 dependencies {
   implementation(project(":polaris-core"))
   implementation(libs.eclipselink)
-  implementation(platform(libs.dropwizard.bom))
-  implementation("io.dropwizard:dropwizard-jackson")
+  implementation(platform(libs.quarkus.bom))
+
   val eclipseLinkDeps: String? = project.findProperty("eclipseLinkDeps") as String?
   eclipseLinkDeps?.let {
     val dependenciesList = it.split(",")
@@ -46,6 +47,10 @@ dependencies {
   }
 
   compileOnly(libs.jetbrains.annotations)
+  compileOnly(libs.jakarta.enterprise.cdi.api)
+  compileOnly(libs.jakarta.inject.api)
+  compileOnly("io.quarkus:quarkus-arc")
+  compileOnly("org.eclipse.microprofile.config:microprofile-config-api")
 
   testImplementation(libs.h2)
   testImplementation(testFixtures(project(":polaris-core")))

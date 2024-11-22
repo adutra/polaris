@@ -34,13 +34,6 @@ dependencies {
   constraints {
     implementation("io.airlift:aircompressor:0.27") { because("Vulnerability detected in 0.25") }
   }
-  // TODO - this is only here for the Discoverable interface, it should be remove when
-  // polaris-service will use Quarkus
-  // For now, I keep the Discoverable interface for now, to have both polaris-service (with
-  // Dropwizard) and polaris-service-quarkus (with Quarkus)
-  // We should use a different mechanism to discover the plugin implementations
-  implementation(platform(libs.dropwizard.bom))
-  implementation("io.dropwizard:dropwizard-jackson")
 
   implementation(platform(libs.jackson.bom))
   implementation("com.fasterxml.jackson.core:jackson-annotations")
@@ -53,6 +46,7 @@ dependencies {
   implementation(libs.slf4j.api)
   compileOnly(libs.jetbrains.annotations)
   compileOnly(libs.spotbugs.annotations)
+  compileOnly(libs.jakarta.inject.api) // FIXME remove when RuntimeCandidate is removed
 
   constraints {
     implementation("org.xerial.snappy:snappy-java:1.1.10.4") {

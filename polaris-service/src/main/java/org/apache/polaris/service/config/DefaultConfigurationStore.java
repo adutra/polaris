@@ -18,33 +18,81 @@
  */
 package org.apache.polaris.service.config;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.annotation.Nullable;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import org.apache.polaris.core.PolarisCallContext;
 import org.apache.polaris.core.PolarisConfigurationStore;
-import org.apache.polaris.core.context.CallContext;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 
+@ApplicationScoped
 public class DefaultConfigurationStore implements PolarisConfigurationStore {
-  private final Map<String, Object> config;
-  private final Map<String, Map<String, Object>> realmConfig;
 
-  public DefaultConfigurationStore(Map<String, Object> config) {
-    this.config = config;
-    this.realmConfig = Map.of();
-  }
+  private final Map<String, Object> properties;
 
+  // FIXME the whole PolarisConfigurationStore + PolarisConfiguration needs to be refactored
+  // to become a proper Quarkus configuration object
+  @Inject
   public DefaultConfigurationStore(
-      Map<String, Object> config, Map<String, Map<String, Object>> realmConfig) {
-    this.config = config;
-    this.realmConfig = realmConfig;
+      ObjectMapper objectMapper,
+      @ConfigProperty(name = "polaris.config.feature-configurations")
+          Map<String, String> properties) {
+    this(convertMap(objectMapper, properties));
   }
 
-  @SuppressWarnings("unchecked")
+  public DefaultConfigurationStore(Map<String, Object> properties) {
+    this.properties = Map.copyOf(properties);
+  }
+
+  private static Map<String, Object> convertMap(
+      ObjectMapper objectMapper, Map<String, String> properties) {
+    Map<String, Object> m = new HashMap<>();
+    for (String configName : properties.keySet()) {
+      String json = properties.get(configName);
+      try {
+        JsonNode node = objectMapper.readTree(json);
+        m.put(configName, configValue(node));
+      } catch (JsonProcessingException e) {
+        throw new RuntimeException(
+            "Invalid JSON value for feature configuration: " + configName, e);
+      }
+    }
+    return m;
+  }
+
+  private static Object configValue(JsonNode node) {
+    return switch (node.getNodeType()) {
+      case BOOLEAN -> node.asBoolean();
+      case STRING -> node.asText();
+      case NUMBER ->
+          switch (node.numberType()) {
+            case INT, LONG -> node.asLong();
+            case FLOAT, DOUBLE -> node.asDouble();
+            default ->
+                throw new IllegalArgumentException("Unsupported number type: " + node.numberType());
+          };
+      case ARRAY -> {
+        List<Object> list = new ArrayList<>();
+        node.elements().forEachRemaining(n -> list.add(configValue(n)));
+        yield List.copyOf(list);
+      }
+      default ->
+          throw new IllegalArgumentException(
+              "Unsupported feature configuration JSON type: " + node.getNodeType());
+    };
+  }
+
   @Override
-  public <T> @Nullable T getConfiguration(@NotNull PolarisCallContext ctx, String configName) {
-    String realm = CallContext.getCurrentContext().getRealmContext().getRealmIdentifier();
-    return (T)
-        realmConfig.getOrDefault(realm, Map.of()).getOrDefault(configName, config.get(configName));
+  public <T> @Nullable T getConfiguration(PolarisCallContext ctx, String configName) {
+    @SuppressWarnings("unchecked")
+    T o = (T) properties.get(configName);
+    return o;
   }
 }

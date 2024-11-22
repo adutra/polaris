@@ -22,6 +22,8 @@ import static org.apache.polaris.service.catalog.AccessDelegationMode.VENDED_CRE
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableMap;
+import jakarta.enterprise.context.RequestScoped;
+import jakarta.inject.Inject;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.SecurityContext;
 import java.net.URLEncoder;
@@ -68,6 +70,7 @@ import org.apache.polaris.service.types.NotificationRequest;
  * org.apache.iceberg.rest.CatalogHandlers} after finding the appropriate {@link Catalog} for the
  * current {@link RealmContext}.
  */
+@RequestScoped
 public class IcebergCatalogAdapter
     implements IcebergRestCatalogApiService, IcebergRestConfigurationApiService {
 
@@ -76,6 +79,7 @@ public class IcebergCatalogAdapter
   private final RealmEntityManagerFactory entityManagerFactory;
   private final PolarisAuthorizer polarisAuthorizer;
 
+  @Inject
   public IcebergCatalogAdapter(
       CallContextCatalogFactory catalogFactory,
       RealmEntityManagerFactory entityManagerFactory,
@@ -296,7 +300,7 @@ public class IcebergCatalogAdapter
   public Response renameTable(
       String prefix, RenameTableRequest renameTableRequest, SecurityContext securityContext) {
     newHandlerWrapper(securityContext, prefix).renameTable(renameTableRequest);
-    return Response.ok(javax.ws.rs.core.Response.Status.NO_CONTENT).build();
+    return Response.ok(Response.Status.NO_CONTENT).build();
   }
 
   @Override

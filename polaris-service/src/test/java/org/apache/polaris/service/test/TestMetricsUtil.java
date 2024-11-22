@@ -20,13 +20,11 @@ package org.apache.polaris.service.test;
 
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 
-import io.dropwizard.testing.junit5.DropwizardAppExtension;
 import io.micrometer.core.instrument.Tag;
 import jakarta.ws.rs.core.Response;
 import java.util.Collection;
 import java.util.List;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.polaris.service.config.PolarisApplicationConfig;
 
 /** Utils for working with metrics in tests */
 public class TestMetricsUtil {
@@ -34,9 +32,7 @@ public class TestMetricsUtil {
 
   /** Gets a total counter by calling the Prometheus metrics endpoint */
   public static double getTotalCounter(
-      DropwizardAppExtension<PolarisApplicationConfig> dropwizardAppExtension,
-      String metricName,
-      Collection<Tag> tags) {
+      PolarisIntegrationTestHelper helper, String metricName, Collection<Tag> tags) {
 
     metricName += SUFFIX_TOTAL;
     metricName = metricName.replace('.', '_').replace('-', '_');
@@ -48,10 +44,9 @@ public class TestMetricsUtil {
         tags.stream().map(tag -> String.format("%s=\"%s\"", tag.getKey(), tag.getValue())).toList();
 
     Response response =
-        dropwizardAppExtension
-            .client()
-            .target(
-                String.format("http://localhost:%d/metrics", dropwizardAppExtension.getAdminPort()))
+        helper
+            .client
+            .target(String.format("http://localhost:%d/metrics", helper.localManagementPort))
             .request()
             .get();
     assertThat(response).returns(Response.Status.OK.getStatusCode(), Response::getStatus);

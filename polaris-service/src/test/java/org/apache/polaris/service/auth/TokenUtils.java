@@ -18,7 +18,8 @@
  */
 package org.apache.polaris.service.auth;
 
-import static org.apache.polaris.service.context.DefaultContextResolver.REALM_PROPERTY_KEY;
+import static org.apache.polaris.service.auth.BasePolarisAuthenticator.PRINCIPAL_ROLE_ALL;
+import static org.apache.polaris.service.context.DefaultRealmContextResolver.REALM_PROPERTY_KEY;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import jakarta.ws.rs.client.Client;
@@ -34,17 +35,11 @@ public class TokenUtils {
   /** Get token against specified realm */
   public static String getTokenFromSecrets(
       Client client, int port, String clientId, String clientSecret, String realm) {
-    return getTokenFromSecrets(
-        client, String.format("http://localhost:%d", port), clientId, clientSecret, realm);
-  }
-
-  public static String getTokenFromSecrets(
-      Client client, String baseUrl, String clientId, String clientSecret, String realm) {
     String token;
 
     Invocation.Builder builder =
         client
-            .target(String.format("%s/api/catalog/v1/oauth/tokens", baseUrl))
+            .target(String.format("http://localhost:%d/api/catalog/v1/oauth/tokens", port))
             .request("application/json");
     if (realm != null) {
       builder = builder.header(REALM_PROPERTY_KEY, realm);
@@ -58,7 +53,7 @@ public class TokenUtils {
                         "grant_type",
                         "client_credentials",
                         "scope",
-                        "PRINCIPAL_ROLE:ALL",
+                        PRINCIPAL_ROLE_ALL,
                         "client_id",
                         clientId,
                         "client_secret",

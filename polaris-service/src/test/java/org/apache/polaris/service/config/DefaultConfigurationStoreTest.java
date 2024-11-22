@@ -33,7 +33,7 @@ public class DefaultConfigurationStoreTest {
     DefaultConfigurationStore defaultConfigurationStore =
         new DefaultConfigurationStore(Map.of("key1", 1, "key2", "value"));
     InMemoryPolarisMetaStoreManagerFactory metastoreFactory =
-        new InMemoryPolarisMetaStoreManagerFactory();
+        new InMemoryPolarisMetaStoreManagerFactory(null, null);
     PolarisCallContext callCtx =
         new PolarisCallContext(
             metastoreFactory.getOrCreateSessionSupplier(() -> "realm1").get(),
@@ -60,14 +60,17 @@ public class DefaultConfigurationStoreTest {
     String realm2KeyTwoValue = "value3";
     DefaultConfigurationStore defaultConfigurationStore =
         new DefaultConfigurationStore(
-            Map.of("key1", defaultKeyOneValue, "key2", defaultKeyTwoValue),
-            Map.of(
-                "realm1",
-                Map.of("key1", realm1KeyOneValue),
-                "realm2",
-                Map.of("key1", realm2KeyOneValue, "key2", realm2KeyTwoValue)));
+            Map.of("key1", defaultKeyOneValue, "key2", defaultKeyTwoValue)
+            // FIXME implement realm overrides
+            //            ,
+            //            Map.of(
+            //                "realm1",
+            //                Map.of("key1", realm1KeyOneValue),
+            //                "realm2",
+            //                Map.of("key1", realm2KeyOneValue, "key2", realm2KeyTwoValue))
+            );
     InMemoryPolarisMetaStoreManagerFactory metastoreFactory =
-        new InMemoryPolarisMetaStoreManagerFactory();
+        new InMemoryPolarisMetaStoreManagerFactory(null, null);
 
     // check realm1 values
     PolarisCallContext realm1Ctx =

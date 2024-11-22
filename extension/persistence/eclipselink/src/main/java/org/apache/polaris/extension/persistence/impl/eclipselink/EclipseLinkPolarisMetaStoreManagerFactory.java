@@ -18,13 +18,15 @@
  */
 package org.apache.polaris.extension.persistence.impl.eclipselink;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.annotation.JsonTypeName;
+import io.quarkus.arc.lookup.LookupIfProperty;
+import jakarta.enterprise.context.ApplicationScoped;
 import org.apache.polaris.core.PolarisDiagnostics;
+import org.apache.polaris.core.config.RuntimeCandidate;
 import org.apache.polaris.core.context.RealmContext;
 import org.apache.polaris.core.persistence.LocalPolarisMetaStoreManagerFactory;
 import org.apache.polaris.core.persistence.PolarisMetaStoreManager;
 import org.apache.polaris.core.persistence.PolarisMetaStoreSession;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jetbrains.annotations.NotNull;
 
 /**
@@ -32,14 +34,17 @@ import org.jetbrains.annotations.NotNull;
  * using an EclipseLink based meta store to store and retrieve all Polaris metadata. It can be
  * configured through persistence.xml to use supported RDBMS as the meta store.
  */
-@JsonTypeName("eclipse-link")
+@ApplicationScoped
+@RuntimeCandidate
+@LookupIfProperty(name = "polaris.persistence.metastore-manager.type", stringValue = "eclipse-link")
 public class EclipseLinkPolarisMetaStoreManagerFactory
     extends LocalPolarisMetaStoreManagerFactory<PolarisEclipseLinkStore> {
-  @JsonProperty("conf-file")
-  private String confFile;
 
-  @JsonProperty("persistence-unit")
-  private String persistenceUnitName;
+  @ConfigProperty(name = "polaris.eclipselink.conf-file")
+  String confFile;
+
+  @ConfigProperty(name = "polaris.eclipselink.persistence-unit", defaultValue = "polaris")
+  String persistenceUnitName;
 
   @Override
   protected PolarisEclipseLinkStore createBackingStore(@NotNull PolarisDiagnostics diagnostics) {
