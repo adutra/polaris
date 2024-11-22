@@ -68,7 +68,6 @@ import org.apache.polaris.core.persistence.MetaStoreManagerFactory;
 import org.apache.polaris.core.persistence.PolarisEntityManager;
 import org.apache.polaris.core.persistence.PolarisMetaStoreManager;
 import org.apache.polaris.core.persistence.resolver.PolarisResolutionManifest;
-import org.apache.polaris.core.storage.cache.StorageCredentialCache;
 import org.apache.polaris.service.catalog.BasePolarisCatalog;
 import org.apache.polaris.service.catalog.PolarisPassthroughResolutionView;
 import org.apache.polaris.service.catalog.io.DefaultFileIOFactory;
@@ -146,6 +145,7 @@ public abstract class PolarisAuthzTestBase {
                   true)));
 
   @Inject protected MetaStoreManagerFactory managerFactory;
+  @Inject protected RealmEntityManagerFactory realmEntityManagerFactory;
   @Inject protected CallContextCatalogFactory callContextCatalogFactory;
   @Inject protected PolarisDiagnostics diagServices;
 
@@ -197,17 +197,9 @@ public abstract class PolarisAuthzTestBase {
               }
             },
             Clock.systemDefaultZone());
-    this.entityManager = new PolarisEntityManager(metaStoreManager, new StorageCredentialCache());
+    this.entityManager = realmEntityManagerFactory.getOrCreateEntityManager(realmContext);
 
-    callContext =
-        CallContext.of(
-            new RealmContext() {
-              @Override
-              public String getRealmIdentifier() {
-                return "test-realm";
-              }
-            },
-            polarisContext);
+    callContext = CallContext.of(realmContext, polarisContext);
     CallContext.setCurrentContext(callContext);
 
     PrincipalEntity rootEntity =
@@ -322,15 +314,18 @@ public abstract class PolarisAuthzTestBase {
 
   @AfterEach
   public void after() {
-    if (this.baseCatalog != null) {
-      try {
-        this.baseCatalog.close();
-        this.baseCatalog = null;
-      } catch (IOException e) {
-        throw new RuntimeException(e);
+    try {
+      if (this.baseCatalog != null) {
+        try {
+          this.baseCatalog.close();
+          this.baseCatalog = null;
+        } catch (IOException e) {
+          throw new RuntimeException(e);
+        }
       }
+    } finally {
+      metaStoreManager.purge(polarisContext);
     }
-    metaStoreManager.purge(polarisContext);
   }
 
   protected @Nonnull PrincipalEntity rotateAndRefreshPrincipal(

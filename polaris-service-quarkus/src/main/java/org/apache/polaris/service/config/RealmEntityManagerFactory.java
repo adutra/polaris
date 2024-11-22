@@ -20,8 +20,8 @@ package org.apache.polaris.service.config;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
-import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import org.apache.polaris.core.context.RealmContext;
 import org.apache.polaris.core.persistence.MetaStoreManagerFactory;
 import org.apache.polaris.core.persistence.PolarisEntityManager;
@@ -37,7 +37,7 @@ public class RealmEntityManagerFactory {
   private final MetaStoreManagerFactory metaStoreManagerFactory;
 
   // Key: realmIdentifier
-  private final Map<String, PolarisEntityManager> cachedEntityManagers = new HashMap<>();
+  private final Map<String, PolarisEntityManager> cachedEntityManagers = new ConcurrentHashMap<>();
 
   @Inject
   public RealmEntityManagerFactory(MetaStoreManagerFactory metaStoreManagerFactory) {
@@ -48,18 +48,14 @@ public class RealmEntityManagerFactory {
     String realm = context.getRealmIdentifier();
 
     LOGGER.debug("Looking up PolarisEntityManager for realm {}", realm);
-    PolarisEntityManager entityManagerInstance = cachedEntityManagers.get(realm);
-    if (entityManagerInstance == null) {
-      LOGGER.info("Initializing new PolarisEntityManager for realm {}", realm);
 
-      // TODO remove Discoverable here
-      entityManagerInstance =
-          new PolarisEntityManager(
+    return cachedEntityManagers.computeIfAbsent(
+        realm,
+        r -> {
+          LOGGER.info("Initializing new PolarisEntityManager for realm {}", r);
+          return new PolarisEntityManager(
               metaStoreManagerFactory.getOrCreateMetaStoreManager(context),
               metaStoreManagerFactory.getOrCreateStorageCredentialCache(context));
-
-      cachedEntityManagers.put(realm, entityManagerInstance);
-    }
-    return entityManagerInstance;
+        });
   }
 }
