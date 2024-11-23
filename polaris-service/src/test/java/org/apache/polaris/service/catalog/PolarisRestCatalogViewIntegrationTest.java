@@ -34,6 +34,7 @@ import org.apache.polaris.core.admin.model.StorageConfigInfo;
 import org.apache.polaris.core.entity.CatalogEntity;
 import org.apache.polaris.service.test.PolarisIntegrationTestHelper;
 import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.TestInfo;
@@ -71,6 +72,9 @@ public abstract class PolarisRestCatalogViewIntegrationTest extends ViewCatalogT
 
   @BeforeEach
   void before(TestInfo testInfo) {
+
+    Assumptions.assumeFalse(shouldSkip());
+
     testInfo
         .getTestMethod()
         .ifPresent(
