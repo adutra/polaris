@@ -33,9 +33,8 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.Table;
@@ -55,13 +54,12 @@ import org.apache.polaris.service.exception.IcebergExceptionMapper;
 import org.apache.polaris.service.test.PolarisIntegrationTestHelper;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestFactory;
 import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.TestInstance.Lifecycle;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.Arguments;
-import org.junit.jupiter.params.provider.MethodSource;
 import software.amazon.awssdk.services.s3.model.S3Exception;
 
 /** Collection of File IO integration tests */
@@ -71,16 +69,17 @@ public class FileIOIntegrationTest {
 
   private static final String catalogBaseLocation = "file:/tmp/buckets/my-bucket/path/to/data";
 
-  private static RESTCatalog restCatalog;
-  private static Table table;
-
   @Inject PolarisIntegrationTestHelper testHelper;
-  @Inject FileIOFactory ioFactory;
+
+  private TestFileIOFactory ioFactory;
+  private RESTCatalog restCatalog;
+  private Table table;
 
   @BeforeAll
   public void beforeAll(TestInfo testInfo) {
     testHelper.setUp(testInfo);
-    QuarkusMock.installMockForType(new TestFileIOFactory(), FileIOFactory.class);
+    ioFactory = new TestFileIOFactory();
+    QuarkusMock.installMockForType(ioFactory, FileIOFactory.class);
 
     FileStorageConfigInfo storageConfigInfo =
         FileStorageConfigInfo.builder()
@@ -138,59 +137,61 @@ public class FileIOIntegrationTest {
         String.format("expected '%s' to contain '%s'", exception.getMessage(), errorMsg));
   }
 
-  @ParameterizedTest
-  @MethodSource("getIOExceptionTypeTestConfigs")
-  void testIOExceptionExceptionTypes(int uniqueId, IOExceptionTypeTestConfig<?> config) {
-    TestFileIOFactory testIOFactory = (TestFileIOFactory) ioFactory;
-    testIOFactory.loadFileIOExceptionSupplier = config.loadFileIOExceptionSupplier;
-    testIOFactory.newInputFileExceptionSupplier = config.newInputFileExceptionSupplier;
-    testIOFactory.newOutputFileExceptionSupplier = config.newOutputFileExceptionSupplier;
+  private void testIOExceptionExceptionTypes(int uniqueId, IOExceptionTypeTestConfig<?> config) {
+    ioFactory.loadFileIOExceptionSupplier = config.loadFileIOExceptionSupplier;
+    ioFactory.newInputFileExceptionSupplier = config.newInputFileExceptionSupplier;
+    ioFactory.newOutputFileExceptionSupplier = config.newOutputFileExceptionSupplier;
 
-    assertThrows(ForbiddenException.class, () -> config.workload.run(uniqueId));
+    assertThrows(config.expectedException, () -> config.workload.run(uniqueId));
   }
 
-  private static Stream<Arguments> getIOExceptionTypeTestConfigs() {
+  @TestFactory
+  Stream<DynamicTest> testIOExceptionExceptionTypes() {
     Iterator<String> accessDeniedHint =
         Iterators.cycle(IcebergExceptionMapper.getAccessDeniedHints());
-    List<IOExceptionTypeTestConfig<?>> configs =
-        Stream.of(
-                IOExceptionTypeTestConfig.allVariants(
-                    () ->
-                        S3Exception.builder()
-                            .statusCode(403)
-                            .message(accessDeniedHint.next())
-                            .build(),
-                    FileIOIntegrationTest::workloadCreateTable),
-                IOExceptionTypeTestConfig.allVariants(
-                    () -> new AzureException(accessDeniedHint.next()),
-                    FileIOIntegrationTest::workloadCreateTable),
-                IOExceptionTypeTestConfig.allVariants(
-                    () -> new StorageException(403, accessDeniedHint.next()),
-                    FileIOIntegrationTest::workloadCreateTable),
-                IOExceptionTypeTestConfig.allVariants(
-                    () ->
-                        S3Exception.builder()
-                            .statusCode(403)
-                            .message(accessDeniedHint.next())
-                            .build(),
-                    FileIOIntegrationTest::workloadUpdateTableProperties),
-                IOExceptionTypeTestConfig.allVariants(
-                    () -> new AzureException(accessDeniedHint.next()),
-                    FileIOIntegrationTest::workloadUpdateTableProperties),
-                IOExceptionTypeTestConfig.allVariants(
-                    () -> new StorageException(403, accessDeniedHint.next()),
-                    FileIOIntegrationTest::workloadUpdateTableProperties))
-            .flatMap(Collection::stream)
-            .collect(Collectors.toList());
-
-    return IntStream.range(0, configs.size()).mapToObj(i -> Arguments.of(i, configs.get(i)));
+    AtomicInteger uniqueId = new AtomicInteger(0);
+    return Stream.of(
+            IOExceptionTypeTestConfig.allVariants(
+                ForbiddenException.class,
+                () ->
+                    S3Exception.builder().statusCode(403).message(accessDeniedHint.next()).build(),
+                this::workloadCreateTable),
+            IOExceptionTypeTestConfig.allVariants(
+                ForbiddenException.class,
+                () -> new AzureException(accessDeniedHint.next()),
+                this::workloadCreateTable),
+            IOExceptionTypeTestConfig.allVariants(
+                ForbiddenException.class,
+                () -> new StorageException(403, accessDeniedHint.next()),
+                this::workloadCreateTable),
+            IOExceptionTypeTestConfig.allVariants(
+                ForbiddenException.class,
+                () ->
+                    S3Exception.builder().statusCode(403).message(accessDeniedHint.next()).build(),
+                this::workloadUpdateTableProperties),
+            IOExceptionTypeTestConfig.allVariants(
+                ForbiddenException.class,
+                () -> new AzureException(accessDeniedHint.next()),
+                this::workloadUpdateTableProperties),
+            IOExceptionTypeTestConfig.allVariants(
+                ForbiddenException.class,
+                () -> new StorageException(403, accessDeniedHint.next()),
+                this::workloadUpdateTableProperties))
+        .flatMap(Collection::stream)
+        .map(
+            config -> {
+              int id = uniqueId.getAndIncrement();
+              return DynamicTest.dynamicTest(
+                  "testIOExceptionExceptionTypes[%d]".formatted(id),
+                  () -> testIOExceptionExceptionTypes(id, config));
+            });
   }
 
-  private static void workloadUpdateTableProperties(int uniqueId) {
+  private void workloadUpdateTableProperties(int uniqueId) {
     table.updateProperties().set("foo", "bar" + uniqueId).commit();
   }
 
-  private static void workloadCreateTable(int uniqueId) {
+  private void workloadCreateTable(int uniqueId) {
     Namespace namespace = Namespace.of("myns" + uniqueId);
     restCatalog.createNamespace(namespace);
     restCatalog
@@ -205,6 +206,7 @@ public class FileIOIntegrationTest {
    * particular IO operation fails with the given exception specified by the Suppliers.
    */
   record IOExceptionTypeTestConfig<T extends Throwable>(
+      Class<T> expectedException,
       Optional<Supplier<RuntimeException>> loadFileIOExceptionSupplier,
       Optional<Supplier<RuntimeException>> newInputFileExceptionSupplier,
       Optional<Supplier<RuntimeException>> newOutputFileExceptionSupplier,
@@ -219,14 +221,26 @@ public class FileIOIntegrationTest {
      * possible step of the IO
      */
     static <T extends Throwable> Collection<IOExceptionTypeTestConfig<T>> allVariants(
-        Supplier<RuntimeException> exceptionSupplier, Workload workload) {
+        Class<T> exceptionType, Supplier<RuntimeException> exceptionSupplier, Workload workload) {
       return List.of(
           new IOExceptionTypeTestConfig<>(
-              Optional.of(exceptionSupplier), Optional.empty(), Optional.empty(), workload),
+              exceptionType,
+              Optional.of(exceptionSupplier),
+              Optional.empty(),
+              Optional.empty(),
+              workload),
           new IOExceptionTypeTestConfig<>(
-              Optional.empty(), Optional.of(exceptionSupplier), Optional.empty(), workload),
+              exceptionType,
+              Optional.empty(),
+              Optional.of(exceptionSupplier),
+              Optional.empty(),
+              workload),
           new IOExceptionTypeTestConfig<>(
-              Optional.empty(), Optional.empty(), Optional.of(exceptionSupplier), workload));
+              exceptionType,
+              Optional.empty(),
+              Optional.empty(),
+              Optional.of(exceptionSupplier),
+              workload));
     }
   }
 }
