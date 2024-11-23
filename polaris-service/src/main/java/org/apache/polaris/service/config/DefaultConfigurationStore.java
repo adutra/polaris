@@ -21,6 +21,8 @@ package org.apache.polaris.service.config;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.smallrye.config.ConfigMapping;
+import io.smallrye.config.WithParentName;
 import jakarta.annotation.Nullable;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -30,25 +32,69 @@ import java.util.List;
 import java.util.Map;
 import org.apache.polaris.core.PolarisCallContext;
 import org.apache.polaris.core.PolarisConfigurationStore;
-import org.eclipse.microprofile.config.inject.ConfigProperty;
+import org.apache.polaris.core.context.CallContext;
 
 @ApplicationScoped
 public class DefaultConfigurationStore implements PolarisConfigurationStore {
 
-  private final Map<String, Object> properties;
+  private final Map<String, Object> defaults;
+  private final Map<String, Map<String, Object>> realmOverrides;
 
   // FIXME the whole PolarisConfigurationStore + PolarisConfiguration needs to be refactored
   // to become a proper Quarkus configuration object
   @Inject
   public DefaultConfigurationStore(
-      ObjectMapper objectMapper,
-      @ConfigProperty(name = "polaris.config.feature-configurations")
-          Map<String, String> properties) {
-    this(convertMap(objectMapper, properties));
+      ObjectMapper objectMapper, FeatureConfigurations configurations) {
+    this(
+        configurations.parseDefaults(objectMapper),
+        configurations.parseRealmOverrides(objectMapper));
   }
 
-  public DefaultConfigurationStore(Map<String, Object> properties) {
-    this.properties = Map.copyOf(properties);
+  public DefaultConfigurationStore(Map<String, Object> defaults) {
+    this(defaults, Map.of());
+  }
+
+  public DefaultConfigurationStore(
+      Map<String, Object> defaults, Map<String, Map<String, Object>> realmOverrides) {
+    this.defaults = Map.copyOf(defaults);
+    this.realmOverrides = Map.copyOf(realmOverrides);
+  }
+
+  @Override
+  public <T> @Nullable T getConfiguration(PolarisCallContext ctx, String configName) {
+    String realm = CallContext.getCurrentContext().getRealmContext().getRealmIdentifier();
+    @SuppressWarnings("unchecked")
+    T confgValue =
+        (T)
+            realmOverrides
+                .getOrDefault(realm, Map.of())
+                .getOrDefault(configName, defaults.get(configName));
+    return confgValue;
+  }
+
+  @ConfigMapping(prefix = "polaris.config.feature-configurations")
+  public interface FeatureConfigurations {
+
+    Map<String, String> defaults();
+
+    Map<String, RealmOverrides> realmOverrides();
+
+    default Map<String, Object> parseDefaults(ObjectMapper objectMapper) {
+      return convertMap(objectMapper, defaults());
+    }
+
+    default Map<String, Map<String, Object>> parseRealmOverrides(ObjectMapper objectMapper) {
+      Map<String, Map<String, Object>> m = new HashMap<>();
+      for (String realm : realmOverrides().keySet()) {
+        m.put(realm, convertMap(objectMapper, realmOverrides().get(realm).overrides()));
+      }
+      return m;
+    }
+  }
+
+  public interface RealmOverrides {
+    @WithParentName
+    Map<String, String> overrides();
   }
 
   private static Map<String, Object> convertMap(
@@ -87,12 +133,5 @@ public class DefaultConfigurationStore implements PolarisConfigurationStore {
           throw new IllegalArgumentException(
               "Unsupported feature configuration JSON type: " + node.getNodeType());
     };
-  }
-
-  @Override
-  public <T> @Nullable T getConfiguration(PolarisCallContext ctx, String configName) {
-    @SuppressWarnings("unchecked")
-    T o = (T) properties.get(configName);
-    return o;
   }
 }
