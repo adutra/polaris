@@ -46,7 +46,7 @@ public class TestMetricsUtil {
     Response response =
         helper
             .client
-            .target(String.format("http://localhost:%d/metrics", helper.localManagementPort))
+            .target(String.format("http://localhost:%d/q/metrics", helper.localManagementPort))
             .request()
             .get();
     assertThat(response).returns(Response.Status.OK.getStatusCode(), Response::getStatus);

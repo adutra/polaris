@@ -83,7 +83,7 @@ You can find more details here: https://quarkus.io/guides/config
 * Complete utests/itests in `polaris-service`
 * Use `@QuarkustIntegrationTest` for integration tests (require root credential ID via env var)
 * Re-introduce `TestEnvironmentExtension`
-* Adapt `@TimedApi` from `polaris-core` (`org.apache.polaris.core.resource.TimedApi`) and fix tests
+* Adapt `@TimedApi` from `polaris-core` (`org.apache.polaris.core.resource.TimedApi`) and fix `RateLimiterFilterTest`
 * Create `polaris-cli` module, add Bootstrap and Purge commands
 * Adapt Helm charts, Dockerfiles, K8s examples
 * Update documentation/README/...

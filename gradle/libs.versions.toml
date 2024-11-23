@@ -20,7 +20,7 @@
 [versions]
 hadoop = "3.4.0"
 iceberg = "1.6.1"
-quarkus = "3.16.1"
+quarkus = "3.16.4"
 slf4j = "2.0.13"
 swagger = "1.6.14"
 
