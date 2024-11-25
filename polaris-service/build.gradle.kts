@@ -39,6 +39,7 @@ dependencies {
   implementation("io.quarkus:quarkus-logging-json")
   implementation("io.quarkus:quarkus-rest")
   implementation("io.quarkus:quarkus-rest-jackson")
+  implementation("io.quarkus:quarkus-reactive-routes")
   implementation("io.quarkus:quarkus-hibernate-validator")
   implementation("io.quarkus:quarkus-smallrye-health")
   implementation("io.quarkus:quarkus-micrometer")
@@ -61,6 +62,8 @@ dependencies {
   implementation(libs.caffeine)
   implementation(libs.guava)
   implementation(libs.slf4j.api)
+
+  implementation("org.jboss.slf4j:slf4j-jboss-logmanager")
 
   implementation(libs.hadoop.client.api)
   implementation(libs.hadoop.client.runtime)

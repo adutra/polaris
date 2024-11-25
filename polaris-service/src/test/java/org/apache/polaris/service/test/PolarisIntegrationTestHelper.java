@@ -56,15 +56,12 @@ import org.apache.polaris.core.persistence.MetaStoreManagerFactory;
 import org.apache.polaris.core.persistence.PolarisMetaStoreManager;
 import org.apache.polaris.core.persistence.PolarisMetaStoreSession;
 import org.apache.polaris.core.storage.aws.PolarisS3FileIOClientFactory;
-import org.apache.polaris.service.PolarisApplicationIntegrationTest;
 import org.apache.polaris.service.auth.TokenUtils;
 import org.apache.polaris.service.catalog.io.DefaultFileIOFactory;
 import org.apache.polaris.service.catalog.io.FileIOFactory;
 import org.apache.polaris.service.context.RealmContextResolver;
 import org.apache.polaris.service.persistence.InMemoryPolarisMetaStoreManagerFactory;
 import org.junit.jupiter.api.TestInfo;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 @Singleton
 public class PolarisIntegrationTestHelper {
@@ -226,9 +223,6 @@ public class PolarisIntegrationTestHelper {
     }
   }
 
-  private static final Logger LOGGER =
-      LoggerFactory.getLogger(PolarisIntegrationTestHelper.class);
-
   public void tearDown() {
     try {
       if (realm != null) {
@@ -236,7 +230,6 @@ public class PolarisIntegrationTestHelper {
       }
     } finally {
       if (client != null) {
-        LOGGER.warn("Closing client");
         client.close();
       }
     }

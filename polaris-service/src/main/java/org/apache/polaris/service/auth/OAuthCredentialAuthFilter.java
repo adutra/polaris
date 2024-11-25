@@ -20,26 +20,23 @@ package org.apache.polaris.service.auth;
 
 import jakarta.inject.Inject;
 import jakarta.ws.rs.InternalServerErrorException;
+import jakarta.ws.rs.Priorities;
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.container.ContainerRequestContext;
-import jakarta.ws.rs.container.ContainerRequestFilter;
-import jakarta.ws.rs.container.PreMatching;
 import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.SecurityContext;
-import jakarta.ws.rs.ext.Provider;
 import java.security.Principal;
 import java.util.Optional;
 import org.apache.polaris.core.auth.AuthenticatedPolarisPrincipal;
 import org.apache.polaris.core.context.CallContext;
 import org.checkerframework.checker.nullness.qual.Nullable;
+import org.jboss.resteasy.reactive.server.ServerRequestFilter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-@Provider
-@PreMatching
-public class OAuthCredentialAuthFilter implements ContainerRequestFilter {
+public class OAuthCredentialAuthFilter {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(OAuthCredentialAuthFilter.class);
 
@@ -56,8 +53,8 @@ public class OAuthCredentialAuthFilter implements ContainerRequestFilter {
   @Inject Authenticator<String, AuthenticatedPolarisPrincipal> authenticator;
   @Inject CallContext callContext;
 
-  @Override
-  public void filter(ContainerRequestContext requestContext) {
+  @ServerRequestFilter(priority = Priorities.AUTHENTICATION)
+  public void authenticate(ContainerRequestContext requestContext) {
 
     if (requestContext.getUriInfo().getPath().equals("/api/catalog/v1/oauth/tokens")) {
       return;
@@ -125,6 +122,8 @@ public class OAuthCredentialAuthFilter implements ContainerRequestFilter {
       if (principal.isEmpty()) {
         return false;
       }
+
+      LOGGER.debug("Authenticated user: {}", principal.get().getName());
 
       AuthenticatedPolarisPrincipal prince = principal.get();
       SecurityContext securityContext = augmentSecurityContext(requestContext, scheme, prince);
