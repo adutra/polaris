@@ -1822,9 +1822,7 @@ public class PolarisCatalogHandlerWrapperAuthzTest extends PolarisAuthzTestBase 
 
     @Override
     public Map<String, String> getConfigOverrides() {
-      return Map.of(
-          "polaris.config.feature-configurations.defaults.ALLOW_EXTERNAL_METADATA_FILE_LOCATION",
-          "true");
+      return Map.of("polaris.config.defaults.ALLOW_EXTERNAL_METADATA_FILE_LOCATION", "true");
     }
   }
 }

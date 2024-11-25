@@ -72,7 +72,7 @@ public class DefaultConfigurationStore implements PolarisConfigurationStore {
     return confgValue;
   }
 
-  @ConfigMapping(prefix = "polaris.config.feature-configurations")
+  @ConfigMapping(prefix = "polaris.config")
   public interface FeatureConfigurations {
 
     Map<String, String> defaults();

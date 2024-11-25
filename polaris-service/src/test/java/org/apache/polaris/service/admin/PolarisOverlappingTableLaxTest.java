@@ -51,9 +51,8 @@ public class PolarisOverlappingTableLaxTest extends PolarisOverlappingTableTestB
     @Override
     public Map<String, String> getConfigOverrides() {
       return Map.of(
-          "polaris.config.feature-configurations.defaults.ALLOW_UNSTRUCTURED_TABLE_LOCATION",
-              "true",
-          "polaris.config.feature-configurations.defaults.ALLOW_TABLE_LOCATION_OVERLAP", "true");
+          "polaris.config.defaults.ALLOW_UNSTRUCTURED_TABLE_LOCATION", "true",
+          "polaris.config.defaults.ALLOW_TABLE_LOCATION_OVERLAP", "true");
     }
   }
 }

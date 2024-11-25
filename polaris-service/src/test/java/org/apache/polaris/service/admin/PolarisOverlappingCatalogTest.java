@@ -172,8 +172,7 @@ public class PolarisOverlappingCatalogTest {
 
     @Override
     public Map<String, String> getConfigOverrides() {
-      return Map.of(
-          "polaris.config.feature-configurations.defaults.ALLOW_OVERLAPPING_CATALOG_URLS", "false");
+      return Map.of("polaris.config.defaults.ALLOW_OVERLAPPING_CATALOG_URLS", "false");
     }
   }
 }

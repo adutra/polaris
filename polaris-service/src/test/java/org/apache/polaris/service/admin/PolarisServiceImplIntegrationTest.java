@@ -2333,8 +2333,7 @@ public class PolarisServiceImplIntegrationTest {
     public Map<String, String> getConfigOverrides() {
       // disallow FILE urls for the sake of tests below
       return Map.of(
-          "polaris.config.feature-configurations.defaults.SUPPORTED_CATALOG_STORAGE_TYPES",
-          "[\"S3\",\"GCS\",\"AZURE\"]");
+          "polaris.config.defaults.SUPPORTED_CATALOG_STORAGE_TYPES", "[\"S3\",\"GCS\",\"AZURE\"]");
     }
   }
 }
