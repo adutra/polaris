@@ -21,11 +21,13 @@ package org.apache.polaris.service.config;
 import io.vertx.core.http.HttpServerRequest;
 import jakarta.enterprise.context.RequestScoped;
 import jakarta.enterprise.inject.Default;
+import jakarta.enterprise.inject.Disposes;
 import jakarta.enterprise.inject.Instance;
 import jakarta.enterprise.inject.Produces;
 import jakarta.ws.rs.core.Context;
 import java.time.Clock;
 import java.util.HashMap;
+import org.apache.polaris.core.PolarisCallContext;
 import org.apache.polaris.core.PolarisConfigurationStore;
 import org.apache.polaris.core.PolarisDefaultDiagServiceImpl;
 import org.apache.polaris.core.PolarisDiagnostics;
@@ -36,13 +38,13 @@ import org.apache.polaris.core.config.RuntimeCandidate;
 import org.apache.polaris.core.context.CallContext;
 import org.apache.polaris.core.context.RealmContext;
 import org.apache.polaris.core.persistence.MetaStoreManagerFactory;
+import org.apache.polaris.core.persistence.PolarisMetaStoreSession;
 import org.apache.polaris.core.storage.cache.StorageCredentialCache;
 import org.apache.polaris.service.auth.Authenticator;
 import org.apache.polaris.service.auth.KeyProvider;
 import org.apache.polaris.service.auth.TokenBrokerFactory;
 import org.apache.polaris.service.catalog.api.IcebergRestOAuth2ApiService;
 import org.apache.polaris.service.catalog.io.FileIOFactory;
-import org.apache.polaris.service.context.CallContextResolver;
 import org.apache.polaris.service.context.RealmContextResolver;
 import org.apache.polaris.service.ratelimiter.RateLimiter;
 
@@ -88,28 +90,28 @@ public class PolarisQuarkusInfrastructure {
 
   @Produces
   @RequestScoped
-  public CallContext callContext(
+  public PolarisCallContext polarisCallContext(
       RealmContext realmContext,
-      @Context HttpServerRequest request,
-      CallContextResolver callContextResolver) {
-    return callContextResolver.resolveCallContext(
-        realmContext,
-        request.method().name(),
-        request.path(),
-        request.params().entries().stream()
-            .collect(HashMap::new, (m, e) -> m.put(e.getKey(), e.getValue()), HashMap::putAll),
-        request.headers().entries().stream()
-            .collect(HashMap::new, (m, e) -> m.put(e.getKey(), e.getValue()), HashMap::putAll));
+      PolarisDiagnostics diagServices,
+      PolarisConfigurationStore configurationStore,
+      MetaStoreManagerFactory metaStoreManagerFactory,
+      Clock clock) {
+    PolarisMetaStoreSession metaStoreSession =
+        metaStoreManagerFactory.getOrCreateSessionSupplier(realmContext).get();
+    return new PolarisCallContext(metaStoreSession, diagServices, configurationStore, clock);
+  }
+
+  @Produces
+  @RequestScoped
+  public CallContext callContext(RealmContext realmContext, PolarisCallContext polarisCallContext) {
+    return CallContext.of(realmContext, polarisCallContext);
+  }
+
+  public void closeCallContext(@Disposes CallContext callContext) {
+    callContext.close();
   }
 
   // Polaris service beans - application scoped - selected from @RuntimeCandidate-annotated beans
-
-  @Produces
-  @Default
-  public CallContextResolver callContextResolver(
-      @RuntimeCandidate Instance<CallContextResolver> callContextResolvers) {
-    return callContextResolvers.get();
-  }
 
   @Produces
   @Default

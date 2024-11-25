@@ -33,11 +33,15 @@ import jakarta.ws.rs.client.ClientBuilder;
 import jakarta.ws.rs.client.Entity;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
+import java.time.Clock;
 import java.util.List;
 import java.util.Map;
 import org.apache.iceberg.aws.s3.S3FileIO;
 import org.apache.iceberg.aws.s3.S3FileIOProperties;
 import org.apache.iceberg.io.FileIO;
+import org.apache.polaris.core.PolarisCallContext;
+import org.apache.polaris.core.PolarisConfigurationStore;
+import org.apache.polaris.core.PolarisDiagnostics;
 import org.apache.polaris.core.admin.model.GrantPrincipalRoleRequest;
 import org.apache.polaris.core.admin.model.Principal;
 import org.apache.polaris.core.admin.model.PrincipalRole;
@@ -50,11 +54,11 @@ import org.apache.polaris.core.entity.PolarisEntityType;
 import org.apache.polaris.core.entity.PolarisPrincipalSecrets;
 import org.apache.polaris.core.persistence.MetaStoreManagerFactory;
 import org.apache.polaris.core.persistence.PolarisMetaStoreManager;
+import org.apache.polaris.core.persistence.PolarisMetaStoreSession;
 import org.apache.polaris.core.storage.aws.PolarisS3FileIOClientFactory;
 import org.apache.polaris.service.auth.TokenUtils;
 import org.apache.polaris.service.catalog.io.DefaultFileIOFactory;
 import org.apache.polaris.service.catalog.io.FileIOFactory;
-import org.apache.polaris.service.context.CallContextResolver;
 import org.apache.polaris.service.context.RealmContextResolver;
 import org.apache.polaris.service.persistence.InMemoryPolarisMetaStoreManagerFactory;
 import org.junit.jupiter.api.TestInfo;
@@ -64,8 +68,10 @@ public class PolarisIntegrationTestHelper {
 
   @Inject public MetaStoreManagerFactory metaStoreManagerFactory;
   @Inject public RealmContextResolver realmContextResolver;
-  @Inject public CallContextResolver callContextResolver;
   @Inject public ObjectMapper objectMapper;
+  @Inject public PolarisDiagnostics diagServices;
+  @Inject public PolarisConfigurationStore configurationStore;
+  @Inject public Clock clock;
 
   public record SnowmanIdentifier(String principalName, String principalRoleName) {}
 
@@ -115,17 +121,19 @@ public class PolarisIntegrationTestHelper {
   }
 
   private void fetchAdminSecrets() {
-    try {
-      if (!(metaStoreManagerFactory instanceof InMemoryPolarisMetaStoreManagerFactory)) {
-        metaStoreManagerFactory.bootstrapRealms(List.of(realm));
-      }
+    if (!(metaStoreManagerFactory instanceof InMemoryPolarisMetaStoreManagerFactory)) {
+      metaStoreManagerFactory.bootstrapRealms(List.of(realm));
+    }
 
-      RealmContext realmContext =
-          realmContextResolver.resolveRealmContext(
-              "http://localhost", "GET", "/", Map.of(), Map.of(REALM_PROPERTY_KEY, realm));
+    RealmContext realmContext =
+        realmContextResolver.resolveRealmContext(
+            "http://localhost", "GET", "/", Map.of(), Map.of(REALM_PROPERTY_KEY, realm));
 
-      CallContext ctx =
-          callContextResolver.resolveCallContext(realmContext, "GET", "/", Map.of(), Map.of());
+    PolarisMetaStoreSession metaStoreSession =
+        metaStoreManagerFactory.getOrCreateSessionSupplier(realmContext).get();
+    PolarisCallContext polarisContext =
+        new PolarisCallContext(metaStoreSession, diagServices, configurationStore, clock);
+    try (CallContext ctx = CallContext.of(realmContext, polarisContext)) {
       CallContext.setCurrentContext(ctx);
       PolarisMetaStoreManager metaStoreManager =
           metaStoreManagerFactory.getOrCreateMetaStoreManager(ctx.getRealmContext());

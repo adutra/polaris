@@ -33,9 +33,6 @@ import java.security.Principal;
 import java.util.Optional;
 import org.apache.polaris.core.auth.AuthenticatedPolarisPrincipal;
 import org.apache.polaris.core.context.CallContext;
-import org.apache.polaris.core.context.RealmContext;
-import org.apache.polaris.service.context.CallContextResolver;
-import org.apache.polaris.service.context.RealmContextResolver;
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -57,8 +54,7 @@ public class OAuthCredentialAuthFilter implements ContainerRequestFilter {
   public static final String OAUTH_ACCESS_TOKEN_PARAM = "access_token";
 
   @Inject Authenticator<String, AuthenticatedPolarisPrincipal> authenticator;
-  @Inject RealmContextResolver realmContextResolver;
-  @Inject CallContextResolver callContextResolver;
+  @Inject CallContext callContext;
 
   @Override
   public void filter(ContainerRequestContext requestContext) {
@@ -122,12 +118,7 @@ public class OAuthCredentialAuthFilter implements ContainerRequestFilter {
         return false;
       }
 
-      RealmContext currentRealmContext = realmContextResolver.resolveRealmContext(requestContext);
-      @SuppressWarnings("resource")
-      CallContext currentCallContext =
-          callContextResolver.resolveCallContext(currentRealmContext, requestContext);
-
-      CallContext.setCurrentContext(currentCallContext);
+      CallContext.setCurrentContext(callContext);
 
       final Optional<AuthenticatedPolarisPrincipal> principal =
           authenticator.authenticate(credentials);

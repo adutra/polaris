@@ -87,6 +87,7 @@ You can find more details here: https://quarkus.io/guides/config
 * Create `polaris-cli` module, add Bootstrap and Purge commands
 * Adapt Helm charts, Dockerfiles, K8s examples
 * Re-introduce MDC context in log messages
+* Remove `PolarisCallContext` – it's just an aggregation of CDI beans
 * Update documentation/README/...
 
 * Do we want to support existing json configuration file as configuration source ?
