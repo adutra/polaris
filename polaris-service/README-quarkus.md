@@ -33,10 +33,10 @@ This module contains the Polaris Service (server)
 
 # Build and run
 
-To build `polaris-service-quarkus` you simply do:
+To build `polaris-service` you simply do:
 
 ```
-./gradlew :polaris-service-quarkus:build
+./gradlew :polaris-service:build
 ```
 
 The build creates ready to run package:
@@ -46,28 +46,34 @@ The build creates ready to run package:
 You can directly run Polaris service (in the build scope) using:
 
 ```
-./gradlew :polaris-service-quarkus:quarkusRun
+./gradlew :polaris-service:quarkusRun
+```
+
+You can run in Dev mode as well:
+
+```
+./gradlew :polaris-service:quarkusDev
 ```
 
 You can directly build a Docker image using:
 
 ```
-./gradlew :polaris-service-quarkus:imageBuild
+./gradlew :polaris-service:imageBuild
 ```
 
 # Configuration
 
-The main configuration file is not the `application.properties`. The default configuration is package as part of the `polaris-service-quarkus`.
-`polaris-service-quarkus` uses several configuration sources (in this order):
+The main configuration file is not the `application.properties`. The default configuration is package as part of the `polaris-service`.
+`polaris-service` uses several configuration sources (in this order):
 * system properties
 * environment variables
 * `.env` file in the current working directory
 * `$PWD/config/application.properties` file
-* the `application.properties` packaged in the `polaris-service-quarkus` application
+* the `application.properties` packaged in the `polaris-service` application
 
 It means you can override some configuration property using environment variables for example.
 
-By default, `polaris-service-quarkus` uses 8181 as HTTP port (defined in the `quarkus.http.port` configuration property).
+By default, `polaris-service` uses 8181 as HTTP port (defined in the `quarkus.http.port` configuration property).
 
 You can override it with, for example if you want to use 8282 port number:
 
@@ -80,6 +86,7 @@ You can find more details here: https://quarkus.io/guides/config
 # TODO
 
 * Modify `CallContext` and remove all usages of ThreadLocal, replace with proper context propagation.
+* Also use context propagation in task thread pools.
 * Complete utests/itests in `polaris-service`
 * Use `@QuarkustIntegrationTest` for integration tests (require root credential ID via env var)
 * Re-introduce `TestEnvironmentExtension`
@@ -89,5 +96,6 @@ You can find more details here: https://quarkus.io/guides/config
 * Re-introduce MDC context in log messages
 * Remove `PolarisCallContext` – it's just an aggregation of CDI beans
 * Update documentation/README/...
+* Fix docker-compose & regtests
 
 * Do we want to support existing json configuration file as configuration source ?

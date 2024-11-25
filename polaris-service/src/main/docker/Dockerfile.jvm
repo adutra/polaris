@@ -18,16 +18,31 @@
 #
 FROM registry.access.redhat.com/ubi9/openjdk-21:1.20-2.1726695192
 
+LABEL org.opencontainers.image.source=https://github.com/apache/polaris
+LABEL org.opencontainers.image.description="Apache Polaris"
+LABEL org.opencontainers.image.licenses=Apache-2.0
+
 ENV LANGUAGE='en_US:en'
 
-COPY --chown=185 build/quarkus-app/lib/ /deployments/lib/
-COPY --chown=185 build/quarkus-app/*.jar /deployments/
-COPY --chown=185 build/quarkus-app/app/ /deployments/app/
-COPY --chown=185 build/quarkus-app/quarkus/ /deployments/quarkus/
+USER root
+RUN groupadd --gid 10001 polaris \
+      && useradd --uid 10000 --gid polaris polaris \
+      && chown -R polaris:polaris /opt/jboss/container \
+      && chown -R polaris:polaris /deployments
 
-EXPOSE 8181
-USER 185
-ENV JAVA_OPTS_APPEND="-Dquarkus.http.host=0.0.0.0 -Djava.util.logging.manager=org.jboss.logmanager.LogManager"
+USER polaris
+WORKDIR /home/polaris
+ENV USER=polaris
+ENV UID=10000
+ENV HOME=/home/polaris
+
+# We make four distinct layers so if there are application changes the library layers can be re-used
+COPY --chown=polaris:polaris build/quarkus-app/lib/ /deployments/lib/
+COPY --chown=polaris:polaris build/quarkus-app/*.jar /deployments/
+COPY --chown=polaris:polaris build/quarkus-app/app/ /deployments/app/
+COPY --chown=polaris:polaris build/quarkus-app/quarkus/ /deployments/quarkus/
+
+EXPOSE 19120
+
+ENV AB_JOLOKIA_OFF=""
 ENV JAVA_APP_JAR="/deployments/quarkus-run.jar"
-
-ENTRYPOINT [ "/opt/jboss/container/java/run/run-java.sh" ]
