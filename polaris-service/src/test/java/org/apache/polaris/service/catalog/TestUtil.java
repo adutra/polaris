@@ -50,7 +50,7 @@ public class TestUtil {
       PolarisIntegrationTestHelper helper, Catalog catalog, Map<String, String> extraProperties) {
     return createSnowmanManagedCatalog(
         helper,
-        String.format("http://localhost:%d", helper.getLocalPort()),
+        String.format("http://localhost:%d", helper.localPort),
         helper.realm,
         catalog,
         extraProperties);

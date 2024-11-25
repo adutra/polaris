@@ -685,7 +685,6 @@ public class PolarisApplicationIntegrationTest {
             .header("Authorization", "Bearer " + testHelper.adminToken)
             .header(REALM_PROPERTY_KEY, testHelper.realm)
             .post(largeRequest)) {
-      LOGGER.error("testRequestBodyTooLarge={}", response.getStatus());
       assertThat(response)
           .returns(Response.Status.REQUEST_ENTITY_TOO_LARGE.getStatusCode(), Response::getStatus);
     }
