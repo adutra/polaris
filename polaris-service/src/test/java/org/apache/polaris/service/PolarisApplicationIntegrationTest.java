@@ -78,6 +78,7 @@ import org.apache.polaris.core.entity.PolarisEntityConstants;
 import org.apache.polaris.service.test.PolarisIntegrationTestHelper;
 import org.assertj.core.api.Assertions;
 import org.assertj.core.api.InstanceOfAssertFactories;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -98,6 +99,9 @@ public class PolarisApplicationIntegrationTest {
   public static final String PRINCIPAL_ROLE_NAME = "admin";
 
   @Inject PolarisIntegrationTestHelper testHelper;
+
+  @ConfigProperty(name = "quarkus.http.limits.max-body-size")
+  long maxBodySize;
 
   @BeforeAll
   public void setUp(TestInfo testInfo) {
@@ -668,8 +672,8 @@ public class PolarisApplicationIntegrationTest {
 
   @Test
   public void testRequestBodyTooLarge() {
-    // The size is set to be higher than the limit in polaris-server-integrationtest.yml
-    Entity<PrincipalRole> largeRequest = Entity.json(new PrincipalRole("r".repeat(1000001)));
+    Entity<PrincipalRole> largeRequest =
+        Entity.json(new PrincipalRole("r".repeat((int) (maxBodySize + 1))));
 
     try (Response response =
         testHelper
@@ -681,6 +685,7 @@ public class PolarisApplicationIntegrationTest {
             .header("Authorization", "Bearer " + testHelper.adminToken)
             .header(REALM_PROPERTY_KEY, testHelper.realm)
             .post(largeRequest)) {
+      LOGGER.error("testRequestBodyTooLarge={}", response.getStatus());
       assertThat(response)
           .returns(Response.Status.REQUEST_ENTITY_TOO_LARGE.getStatusCode(), Response::getStatus);
     }
