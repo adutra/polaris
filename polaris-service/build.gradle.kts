@@ -17,6 +17,7 @@
  * under the License.
  */
 
+import org.gradle.api.tasks.testing.logging.TestExceptionFormat
 import org.openapitools.generator.gradle.plugin.tasks.GenerateTask
 
 plugins {
@@ -232,6 +233,8 @@ tasks.named<Test>("test").configure {
   jvmArgs("--add-exports", "java.base/sun.nio.ch=ALL-UNNAMED")
   useJUnitPlatform()
   maxParallelForks = 4
+  testLogging.showStandardStreams = true
+  testLogging.exceptionFormat = TestExceptionFormat.FULL
 }
 
 /**
