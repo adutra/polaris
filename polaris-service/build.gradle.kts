@@ -41,6 +41,7 @@ dependencies {
   implementation("io.quarkus:quarkus-hibernate-validator")
   implementation("io.quarkus:quarkus-smallrye-health")
   implementation("io.quarkus:quarkus-micrometer")
+  implementation("io.quarkus:quarkus-micrometer-registry-prometheus")
   implementation("io.quarkus:quarkus-opentelemetry")
   implementation("io.quarkus:quarkus-container-image-docker")
 
@@ -75,8 +76,6 @@ dependencies {
   implementation("software.amazon.awssdk:s3")
   implementation(platform(libs.azuresdk.bom))
   implementation("com.azure:azure-core")
-
-  implementation("io.quarkus:quarkus-micrometer-registry-prometheus")
 
   compileOnly(libs.swagger.annotations)
 
@@ -122,6 +121,8 @@ dependencies {
   testImplementation(
     enforcedPlatform("org.antlr:antlr4-runtime:4.9.3")
   ) // cannot be higher than 4.9.3
+
+  testImplementation("org.hawkular.agent:prometheus-scraper:0.23.0.Final")
 }
 
 openApiGenerate {

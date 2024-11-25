@@ -83,9 +83,10 @@ You can find more details here: https://quarkus.io/guides/config
 * Complete utests/itests in `polaris-service`
 * Use `@QuarkustIntegrationTest` for integration tests (require root credential ID via env var)
 * Re-introduce `TestEnvironmentExtension`
-* Adapt `@TimedApi` from `polaris-core` (`org.apache.polaris.core.resource.TimedApi`) and fix `RateLimiterFilterTest`
+* Remove `OAuthCredentialAuthFilter` and replace with Quarkus OIDC security
 * Create `polaris-cli` module, add Bootstrap and Purge commands
 * Adapt Helm charts, Dockerfiles, K8s examples
+* Re-introduce MDC context in log messages
 * Update documentation/README/...
 
 * Do we want to support existing json configuration file as configuration source ?

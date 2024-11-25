@@ -16,9 +16,29 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.polaris.core.monitor;
+package org.apache.polaris.service.monitor;
 
-/** Allows setting a configured instance of {@link PolarisMetricRegistry} */
-public interface MetricRegistryAware {
-  void setMetricRegistry(PolarisMetricRegistry metricRegistry);
+import io.micrometer.core.instrument.Tag;
+import io.micrometer.core.instrument.config.MeterFilter;
+import jakarta.enterprise.inject.Produces;
+import jakarta.inject.Inject;
+import jakarta.inject.Singleton;
+import java.util.Map;
+import java.util.stream.Collectors;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
+
+public class GlobalMeterFilterProducer {
+
+  @Inject
+  @ConfigProperty(name = "polaris.metrics.tags")
+  Map<String, String> tags;
+
+  @Produces
+  @Singleton
+  public MeterFilter produceGlobalMeterFilter() {
+    return MeterFilter.commonTags(
+        this.tags.entrySet().stream()
+            .map(e -> Tag.of(e.getKey(), e.getValue()))
+            .collect(Collectors.toSet()));
+  }
 }

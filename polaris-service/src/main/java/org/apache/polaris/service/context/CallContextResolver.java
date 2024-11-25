@@ -18,16 +18,32 @@
  */
 package org.apache.polaris.service.context;
 
+import jakarta.ws.rs.container.ContainerRequestContext;
 import java.util.Map;
+import java.util.Map.Entry;
+import java.util.stream.Collectors;
 import org.apache.polaris.core.context.CallContext;
 import org.apache.polaris.core.context.RealmContext;
 
 /** Uses the resolved RealmContext to further resolve elements of the CallContext. */
 public interface CallContextResolver {
+
   CallContext resolveCallContext(
       RealmContext realmContext,
       String method,
       String path,
       Map<String, String> queryParams,
       Map<String, String> headers);
+
+  default CallContext resolveCallContext(
+      RealmContext realmContext, ContainerRequestContext requestContext) {
+    String path = requestContext.getUriInfo().getPath();
+    Map<String, String> queryParams =
+        requestContext.getUriInfo().getQueryParameters().entrySet().stream()
+            .collect(Collectors.toMap(Entry::getKey, (e) -> e.getValue().getFirst()));
+    Map<String, String> headers =
+        requestContext.getHeaders().entrySet().stream()
+            .collect(Collectors.toMap(Map.Entry::getKey, (e) -> e.getValue().getFirst()));
+    return resolveCallContext(realmContext, requestContext.getMethod(), path, queryParams, headers);
+  }
 }

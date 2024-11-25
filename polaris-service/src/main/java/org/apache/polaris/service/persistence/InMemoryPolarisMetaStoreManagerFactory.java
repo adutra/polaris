@@ -44,6 +44,7 @@ public class InMemoryPolarisMetaStoreManagerFactory
 
   private final Set<String> bootstrappedRealms = new HashSet<>();
   private final RealmContextResolver realmContextResolver;
+  private final PolarisStorageIntegrationProvider storageIntegration;
 
   @Inject
   public InMemoryPolarisMetaStoreManagerFactory(

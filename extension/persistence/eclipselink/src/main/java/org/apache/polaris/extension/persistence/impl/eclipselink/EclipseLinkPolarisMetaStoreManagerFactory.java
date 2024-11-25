@@ -20,12 +20,14 @@ package org.apache.polaris.extension.persistence.impl.eclipselink;
 
 import io.quarkus.arc.lookup.LookupIfProperty;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 import org.apache.polaris.core.PolarisDiagnostics;
 import org.apache.polaris.core.config.RuntimeCandidate;
 import org.apache.polaris.core.context.RealmContext;
 import org.apache.polaris.core.persistence.LocalPolarisMetaStoreManagerFactory;
 import org.apache.polaris.core.persistence.PolarisMetaStoreManager;
 import org.apache.polaris.core.persistence.PolarisMetaStoreSession;
+import org.apache.polaris.core.storage.PolarisStorageIntegrationProvider;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jetbrains.annotations.NotNull;
 
@@ -45,6 +47,8 @@ public class EclipseLinkPolarisMetaStoreManagerFactory
 
   @ConfigProperty(name = "polaris.eclipselink.persistence-unit", defaultValue = "polaris")
   String persistenceUnitName;
+
+  @Inject PolarisStorageIntegrationProvider storageIntegration;
 
   @Override
   protected PolarisEclipseLinkStore createBackingStore(@NotNull PolarisDiagnostics diagnostics) {
