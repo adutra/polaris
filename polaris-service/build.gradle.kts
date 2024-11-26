@@ -104,8 +104,6 @@ dependencies {
 
   testImplementation(platform(libs.junit.bom))
   testImplementation(libs.bundles.junit.testing)
-  testImplementation(libs.assertj.core)
-  testImplementation(libs.mockito.core)
 
   testImplementation(platform(libs.quarkus.bom))
   testImplementation("io.quarkus:quarkus-junit5")
@@ -265,3 +263,5 @@ fun JavaForkOptions.addSparkJvmOptions() {
         "-Djdk.reflect.useDirectMethodHandle=false"
       )
 }
+
+tasks.named("compileJava") { dependsOn("compileQuarkusGeneratedSourcesJava") }

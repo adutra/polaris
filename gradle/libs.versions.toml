@@ -20,6 +20,7 @@
 [versions]
 hadoop = "3.4.0"
 iceberg = "1.6.1"
+junit = "5.10.3"
 quarkus = "3.16.4"
 slf4j = "2.0.13"
 swagger = "1.6.14"
@@ -63,9 +64,9 @@ javax-annotation-api = { module = "javax.annotation:javax.annotation-api", versi
 javax-inject = { module = "javax.inject:javax.inject", version = "1" }
 javax-servlet-api = { module = "javax.servlet:javax.servlet-api", version = "4.0.1" }
 jetbrains-annotations = { module = "org.jetbrains:annotations", version = "24.1.0" }
-junit-bom = { module = "org.junit:junit-bom", version = "5.10.3" }
-junit-jupiter-api = { module = "org.junit.jupiter:junit-jupiter-api", version = "5.10.3" }
-junit-jupiter-params = { module = "org.junit.jupiter:junit-jupiter-params", version = "5.10.3" }
+junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
+junit-jupiter-api = { module = "org.junit.jupiter:junit-jupiter-api", version.ref = "junit" }
+junit-jupiter-params = { module = "org.junit.jupiter:junit-jupiter-params", version.ref = "junit" }
 junit-platform-reporting = { module = "org.junit.platform:junit-platform-reporting", version = "1.10.3" }
 logback-core = { module = "ch.qos.logback:logback-core", version = "1.4.14" }
 micrometer-bom = { module = "io.micrometer:micrometer-bom", version = "1.13.6" }
@@ -74,7 +75,7 @@ mockito-junit-jupiter = { module = "org.mockito:mockito-junit-jupiter", version 
 opentelemetry-bom = { module = "io.opentelemetry:opentelemetry-bom", version = "1.38.0" }
 opentelemetry-semconv = { module = "io.opentelemetry.semconv:opentelemetry-semconv", version = "1.25.0-alpha" }
 prometheus-metrics-exporter-servlet-jakarta = { module = "io.prometheus:prometheus-metrics-exporter-servlet-jakarta", version = "1.3.0" }
-quarkus-bom = { module = "io.quarkus:quarkus-bom", version.ref = "quarkus" }
+quarkus-bom = { module = "io.quarkus.platform:quarkus-bom", version.ref = "quarkus" }
 s3mock-testcontainers = { module = "com.adobe.testing:s3mock-testcontainers", version = "3.11.0" }
 slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
 spotbugs-annotations = { module = "com.github.spotbugs:spotbugs-annotations", version = "4.8.5" }

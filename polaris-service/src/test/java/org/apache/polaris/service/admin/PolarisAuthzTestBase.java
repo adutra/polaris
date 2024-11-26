@@ -193,7 +193,8 @@ public abstract class PolarisAuthzTestBase {
             new PolarisConfigurationStore() {
               @Override
               public <T> @Nullable T getConfiguration(PolarisCallContext ctx, String configName) {
-                return (T) configMap.get(configName);
+                @SuppressWarnings("unchecked") var r = (T) configMap.get(configName);
+                return r;
               }
             },
             Clock.systemDefaultZone());

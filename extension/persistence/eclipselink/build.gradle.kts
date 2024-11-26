@@ -51,6 +51,9 @@ dependencies {
   compileOnly(libs.jakarta.inject.api)
   compileOnly("io.quarkus:quarkus-arc")
   compileOnly("org.eclipse.microprofile.config:microprofile-config-api")
+  compileOnly(platform(libs.jackson.bom))
+  compileOnly("com.fasterxml.jackson.core:jackson-annotations")
+  compileOnly("com.fasterxml.jackson.core:jackson-core")
 
   testImplementation(libs.h2)
   testImplementation(testFixtures(project(":polaris-core")))
@@ -70,3 +73,5 @@ tasks.register<Jar>("archiveConf") {
 }
 
 tasks.named("test") { dependsOn("archiveConf") }
+
+tasks.named("compileJava") { dependsOn("compileQuarkusGeneratedSourcesJava") }
