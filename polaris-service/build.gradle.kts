@@ -23,6 +23,7 @@ plugins {
   alias(libs.plugins.quarkus)
   alias(libs.plugins.openapi.generator)
   id("polaris-server")
+  id("polaris-license-report")
   id("application")
 }
 
