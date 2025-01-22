@@ -17,6 +17,8 @@
  * under the License.
  */
 
+import io.quarkus.gradle.tasks.QuarkusDev
+
 plugins {
   alias(libs.plugins.quarkus)
   alias(libs.plugins.jandex)
@@ -69,6 +71,12 @@ tasks.named("distTar") { dependsOn("quarkusBuild") }
 tasks.withType<Javadoc> { isFailOnError = false }
 
 tasks.register("polarisServerRun") { dependsOn("quarkusRun") }
+
+tasks.register("polarisServerDev") { dependsOn("quarkusDev") }
+
+tasks.named<QuarkusDev>("quarkusDev") {
+  jvmArgs = listOf("-Dpolaris.bootstrap.credentials=POLARIS,root,secret")
+}
 
 distributions {
   main {
