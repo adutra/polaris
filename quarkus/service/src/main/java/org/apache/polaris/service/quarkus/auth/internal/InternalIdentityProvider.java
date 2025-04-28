@@ -18,6 +18,7 @@
  */
 package org.apache.polaris.service.quarkus.auth.internal;
 
+import io.quarkus.security.AuthenticationFailedException;
 import io.quarkus.security.identity.AuthenticationRequestContext;
 import io.quarkus.security.identity.IdentityProvider;
 import io.quarkus.security.identity.SecurityIdentity;
@@ -26,12 +27,21 @@ import io.quarkus.security.runtime.QuarkusSecurityIdentity;
 import io.quarkus.vertx.http.runtime.security.HttpSecurityUtils;
 import io.smallrye.mutiny.Uni;
 import io.vertx.ext.web.RoutingContext;
+import jakarta.annotation.Nullable;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 import java.security.Principal;
+import java.util.Set;
+import org.apache.polaris.service.auth.DecodedToken;
+import org.apache.polaris.service.auth.TokenBroker;
+import org.apache.polaris.service.quarkus.auth.QuarkusPrincipalAuthInfo;
+import org.apache.polaris.service.quarkus.auth.internal.InternalAuthenticationMechanism.InternalTokenCredential;
 
 /** A custom {@link IdentityProvider} that handles internal token authentication requests. */
 @ApplicationScoped
 public class InternalIdentityProvider implements IdentityProvider<TokenAuthenticationRequest> {
+
+  @Inject TokenBroker tokenBroker;
 
   @Override
   public Class<TokenAuthenticationRequest> getRequestType() {
@@ -41,21 +51,53 @@ public class InternalIdentityProvider implements IdentityProvider<TokenAuthentic
   @Override
   public Uni<SecurityIdentity> authenticate(
       TokenAuthenticationRequest request, AuthenticationRequestContext context) {
-    if (!(request.getToken()
-        instanceof InternalAuthenticationMechanism.InternalPrincipalAuthInfo credential)) {
+    if (!(request.getToken() instanceof InternalTokenCredential credential)) {
       return Uni.createFrom().nullItem();
     }
-    InternalTokenPrincipal principal = new InternalTokenPrincipal(credential.getPrincipalName());
-    return Uni.createFrom()
-        .item(
-            QuarkusSecurityIdentity.builder()
-                .setPrincipal(principal)
-                .addCredential(credential)
-                .addAttribute(
-                    RoutingContext.class.getName(),
-                    HttpSecurityUtils.getRoutingContextAttribute(request))
-                .build());
+    return Uni.createFrom().item(() -> verifyToken(credential, request));
+  }
+
+  private SecurityIdentity verifyToken(
+      InternalTokenCredential credential, TokenAuthenticationRequest request) {
+    DecodedToken verified;
+    try {
+      verified = tokenBroker.verify(credential.getDecodedToken());
+    } catch (Exception e) {
+      throw new AuthenticationFailedException(e);
+    }
+    return QuarkusSecurityIdentity.builder()
+        .setPrincipal(new InternalTokenPrincipal(verified.getSub()))
+        .addCredential(new InternalPrincipalAuthInfo(verified))
+        .addAttribute(
+            RoutingContext.class.getName(), HttpSecurityUtils.getRoutingContextAttribute(request))
+        .build();
   }
 
   private record InternalTokenPrincipal(String getName) implements Principal {}
+
+  static class InternalPrincipalAuthInfo implements QuarkusPrincipalAuthInfo {
+
+    private final DecodedToken token;
+
+    InternalPrincipalAuthInfo(DecodedToken token) {
+      this.token = token;
+    }
+
+    @Nullable
+    @Override
+    public Long getPrincipalId() {
+      return token.getPrincipalId();
+    }
+
+    @Nullable
+    @Override
+    public String getPrincipalName() {
+      return token.getPrincipalName();
+    }
+
+    @Override
+    public Set<String> getPrincipalRoles() {
+      return token.getPrincipalRoles();
+    }
+  }
 }

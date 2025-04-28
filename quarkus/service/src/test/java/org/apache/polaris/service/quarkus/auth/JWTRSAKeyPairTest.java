@@ -79,7 +79,8 @@ public class JWTRSAKeyPairTest {
             metastoreManager.loadEntity(polarisCallContext, 0L, 1L, PolarisEntityType.PRINCIPAL))
         .thenReturn(new EntityResult(principal));
     TokenBroker tokenBroker =
-        new JWTRSAKeyPair(metastoreManager, 420, publicFileLocation, privateFileLocation);
+        new JWTRSAKeyPair(
+            () -> "test", metastoreManager, 420, publicFileLocation, privateFileLocation);
     TokenResponse token =
         tokenBroker.generateFromClientSecrets(
             clientId,

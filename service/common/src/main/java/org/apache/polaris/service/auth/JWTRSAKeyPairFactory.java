@@ -64,6 +64,7 @@ public class JWTRSAKeyPairFactory implements TokenBrokerFactory {
     PolarisMetaStoreManager metaStoreManager =
         metaStoreManagerFactory.getOrCreateMetaStoreManager(realmContext);
     return new JWTRSAKeyPair(
+        realmContext,
         metaStoreManager,
         (int) maxTokenGeneration.toSeconds(),
         keyPairConfiguration.publicKeyFile(),

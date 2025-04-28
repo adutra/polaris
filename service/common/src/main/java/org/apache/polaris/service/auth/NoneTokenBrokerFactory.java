@@ -63,7 +63,12 @@ public class NoneTokenBrokerFactory implements TokenBrokerFactory {
         }
 
         @Override
-        public DecodedToken verify(String token) {
+        public TokenDecodeResult decode(String token) {
+          return null;
+        }
+
+        @Override
+        public DecodedToken verify(DecodedToken token) {
           return null;
         }
       };
