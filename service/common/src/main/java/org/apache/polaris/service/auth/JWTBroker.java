@@ -20,6 +20,7 @@ package org.apache.polaris.service.auth;
 
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
+import com.auth0.jwt.exceptions.JWTDecodeException;
 import com.auth0.jwt.exceptions.JWTVerificationException;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import com.auth0.jwt.interfaces.JWTVerifier;
@@ -32,6 +33,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.iceberg.exceptions.NotAuthorizedException;
 import org.apache.polaris.core.PolarisCallContext;
 import org.apache.polaris.core.context.CallContext;
+import org.apache.polaris.core.context.RealmContext;
 import org.apache.polaris.core.entity.PolarisEntityType;
 import org.apache.polaris.core.entity.PrincipalEntity;
 import org.apache.polaris.core.persistence.PolarisMetaStoreManager;
@@ -47,14 +49,20 @@ public abstract class JWTBroker implements TokenBroker {
 
   private static final String ISSUER_KEY = "polaris";
   private static final String CLAIM_KEY_ACTIVE = "active";
+  private static final String CLAIM_KEY_REALM = "realm";
   private static final String CLAIM_KEY_CLIENT_ID = "client_id";
   private static final String CLAIM_KEY_PRINCIPAL_ID = "principalId";
   private static final String CLAIM_KEY_SCOPE = "scope";
 
+  private final RealmContext realmContext;
   private final PolarisMetaStoreManager metaStoreManager;
   private final int maxTokenGenerationInSeconds;
 
-  JWTBroker(PolarisMetaStoreManager metaStoreManager, int maxTokenGenerationInSeconds) {
+  JWTBroker(
+      RealmContext realmContext,
+      PolarisMetaStoreManager metaStoreManager,
+      int maxTokenGenerationInSeconds) {
+    this.realmContext = realmContext;
     this.metaStoreManager = metaStoreManager;
     this.maxTokenGenerationInSeconds = maxTokenGenerationInSeconds;
   }
@@ -62,32 +70,34 @@ public abstract class JWTBroker implements TokenBroker {
   public abstract Algorithm getAlgorithm();
 
   @Override
-  public DecodedToken verify(String token) {
-    JWTVerifier verifier = JWT.require(getAlgorithm()).withClaim(CLAIM_KEY_ACTIVE, true).build();
+  public TokenDecodeResult decode(String token) {
+    DecodedJWT jwt;
+    try {
+      jwt = JWT.decode(token);
+    } catch (JWTDecodeException e) {
+      return new TokenDecodeResult(TokenDecodeResult.Status.MALFORMED_TOKEN, Optional.empty());
+    }
+    if (!ISSUER_KEY.equals(jwt.getIssuer())) {
+      return new TokenDecodeResult(TokenDecodeResult.Status.INVALID_ISSUER, Optional.empty());
+    }
+    if (!realmContext.getRealmIdentifier().equals(jwt.getClaim(CLAIM_KEY_REALM).asString())) {
+      return new TokenDecodeResult(TokenDecodeResult.Status.INVALID_REALM, Optional.empty());
+    }
+    return new TokenDecodeResult(
+        TokenDecodeResult.Status.SUCCESS, Optional.of(new DecodedTokenImpl(jwt)));
+  }
+
+  @Override
+  public DecodedToken verify(DecodedToken token) {
+    JWTVerifier verifier =
+        JWT.require(getAlgorithm())
+            .withClaim(CLAIM_KEY_ACTIVE, true)
+            .withClaim(CLAIM_KEY_REALM, realmContext.getRealmIdentifier())
+            .build();
 
     try {
-      DecodedJWT decodedJWT = verifier.verify(token);
-      return new DecodedToken() {
-        @Override
-        public Long getPrincipalId() {
-          return decodedJWT.getClaim("principalId").asLong();
-        }
-
-        @Override
-        public String getClientId() {
-          return decodedJWT.getClaim("client_id").asString();
-        }
-
-        @Override
-        public String getSub() {
-          return decodedJWT.getSubject();
-        }
-
-        @Override
-        public String getScope() {
-          return decodedJWT.getClaim("scope").asString();
-        }
-      };
+      DecodedJWT decodedJWT = verifier.verify(token.unwrap(DecodedJWT.class));
+      return new DecodedTokenImpl(decodedJWT);
 
     } catch (JWTVerificationException e) {
       LOGGER.error("Failed to verify the token with error", e);
@@ -170,6 +180,7 @@ public abstract class JWTBroker implements TokenBroker {
         .withExpiresAt(now.plus(maxTokenGenerationInSeconds, ChronoUnit.SECONDS))
         .withJWTId(UUID.randomUUID().toString())
         .withClaim(CLAIM_KEY_ACTIVE, true)
+        .withClaim(CLAIM_KEY_REALM, realmContext.getRealmIdentifier())
         .withClaim(CLAIM_KEY_CLIENT_ID, clientId)
         .withClaim(CLAIM_KEY_PRINCIPAL_ID, principalId)
         .withClaim(CLAIM_KEY_SCOPE, scopes(scope))
@@ -188,5 +199,33 @@ public abstract class JWTBroker implements TokenBroker {
 
   private String scopes(String scope) {
     return StringUtils.isNotBlank(scope) ? scope : DefaultAuthenticator.PRINCIPAL_ROLE_ALL;
+  }
+
+  private record DecodedTokenImpl(DecodedJWT decodedJWT) implements DecodedToken {
+
+    @Override
+    public <T> T unwrap(Class<T> clazz) {
+      return clazz.cast(decodedJWT);
+    }
+
+    @Override
+    public Long getPrincipalId() {
+      return decodedJWT.getClaim("principalId").asLong();
+    }
+
+    @Override
+    public String getClientId() {
+      return decodedJWT.getClaim("client_id").asString();
+    }
+
+    @Override
+    public String getSub() {
+      return decodedJWT.getSubject();
+    }
+
+    @Override
+    public String getScope() {
+      return decodedJWT.getClaim("scope").asString();
+    }
   }
 }

@@ -18,26 +18,30 @@
  */
 package org.apache.polaris.service.auth;
 
-import com.auth0.jwt.algorithms.Algorithm;
-import java.util.function.Supplier;
-import org.apache.polaris.core.context.RealmContext;
-import org.apache.polaris.core.persistence.PolarisMetaStoreManager;
+import com.google.common.base.Preconditions;
+import java.util.Optional;
 
-/** Generates a JWT using a Symmetric Key. */
-public class JWTSymmetricKeyBroker extends JWTBroker {
-  private final Supplier<String> secretSupplier;
+public record TokenDecodeResult(Status status, Optional<DecodedToken> token) {
 
-  public JWTSymmetricKeyBroker(
-      RealmContext realmContext,
-      PolarisMetaStoreManager metaStoreManager,
-      int maxTokenGenerationInSeconds,
-      Supplier<String> secretSupplier) {
-    super(realmContext, metaStoreManager, maxTokenGenerationInSeconds);
-    this.secretSupplier = secretSupplier;
+  public TokenDecodeResult {
+    Preconditions.checkState(!(status == Status.SUCCESS && token.isEmpty()));
+    Preconditions.checkState(!(status != Status.SUCCESS && token.isPresent()));
   }
 
-  @Override
-  public Algorithm getAlgorithm() {
-    return Algorithm.HMAC256(secretSupplier.get());
+  public enum Status {
+    SUCCESS(""),
+    MALFORMED_TOKEN("Malformed token"),
+    INVALID_ISSUER("Invalid issuer"),
+    INVALID_REALM("Invalid realm"),
+    ;
+    private final String message;
+
+    Status(String message) {
+      this.message = message;
+    }
+
+    public String message() {
+      return message;
+    }
   }
 }

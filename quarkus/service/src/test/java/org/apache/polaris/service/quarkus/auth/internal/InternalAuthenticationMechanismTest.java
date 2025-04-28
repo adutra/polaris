@@ -31,16 +31,19 @@ import io.quarkus.security.identity.IdentityProviderManager;
 import io.quarkus.security.identity.SecurityIdentity;
 import io.quarkus.security.identity.request.TokenAuthenticationRequest;
 import io.smallrye.mutiny.Uni;
+import io.vertx.core.http.HttpServerRequest;
 import io.vertx.ext.web.RoutingContext;
-import org.apache.iceberg.exceptions.NotAuthorizedException;
+import java.util.Optional;
 import org.apache.polaris.service.auth.AuthenticationRealmConfiguration;
 import org.apache.polaris.service.auth.AuthenticationType;
 import org.apache.polaris.service.auth.DecodedToken;
 import org.apache.polaris.service.auth.TokenBroker;
+import org.apache.polaris.service.auth.TokenDecodeResult;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.EnumSource;
 
 public class InternalAuthenticationMechanismTest {
 
@@ -79,47 +82,48 @@ public class InternalAuthenticationMechanismTest {
   @Test
   public void testAuthenticateWithNoAuthHeader() {
     when(configuration.type()).thenReturn(AuthenticationType.INTERNAL);
-    when(routingContext.request()).thenReturn(mock(io.vertx.core.http.HttpServerRequest.class));
+    when(routingContext.request()).thenReturn(mock(HttpServerRequest.class));
     when(routingContext.request().getHeader("Authorization")).thenReturn(null);
 
     Uni<SecurityIdentity> result = mechanism.authenticate(routingContext, identityProviderManager);
 
     assertThat(result.await().indefinitely()).isNull();
-    verify(tokenBroker, never()).verify(any());
+    verify(tokenBroker, never()).decode(any());
   }
 
   @Test
   public void testAuthenticateWithInvalidAuthHeaderFormat() {
     when(configuration.type()).thenReturn(AuthenticationType.INTERNAL);
-    when(routingContext.request()).thenReturn(mock(io.vertx.core.http.HttpServerRequest.class));
+    when(routingContext.request()).thenReturn(mock(HttpServerRequest.class));
     when(routingContext.request().getHeader("Authorization")).thenReturn("InvalidFormat");
 
     Uni<SecurityIdentity> result = mechanism.authenticate(routingContext, identityProviderManager);
 
     assertThat(result.await().indefinitely()).isNull();
-    verify(tokenBroker, never()).verify(any());
+    verify(tokenBroker, never()).decode(any());
   }
 
   @Test
   public void testAuthenticateWithNonBearerAuthHeader() {
     when(configuration.type()).thenReturn(AuthenticationType.INTERNAL);
-    when(routingContext.request()).thenReturn(mock(io.vertx.core.http.HttpServerRequest.class));
+    when(routingContext.request()).thenReturn(mock(HttpServerRequest.class));
     when(routingContext.request().getHeader("Authorization")).thenReturn("Basic dXNlcjpwYXNz");
 
     Uni<SecurityIdentity> result = mechanism.authenticate(routingContext, identityProviderManager);
 
     assertThat(result.await().indefinitely()).isNull();
-    verify(tokenBroker, never()).verify(any());
+    verify(tokenBroker, never()).decode(any());
   }
 
   @Test
-  public void testAuthenticateWithInvalidTokenInternalAuth() {
-    when(configuration.type()).thenReturn(AuthenticationType.INTERNAL);
-    when(routingContext.request()).thenReturn(mock(io.vertx.core.http.HttpServerRequest.class));
-    when(routingContext.request().getHeader("Authorization")).thenReturn("Bearer invalidToken");
+  public void testAuthenticateWithMalformedToken() {
+    when(configuration.type()).thenReturn(AuthenticationType.MIXED);
+    when(routingContext.request()).thenReturn(mock(HttpServerRequest.class));
+    when(routingContext.request().getHeader("Authorization")).thenReturn("Bearer malformedToken");
 
-    NotAuthorizedException cause = new NotAuthorizedException("Invalid token");
-    when(tokenBroker.verify("invalidToken")).thenThrow(cause);
+    when(tokenBroker.decode("malformedToken"))
+        .thenReturn(
+            new TokenDecodeResult(TokenDecodeResult.Status.MALFORMED_TOKEN, Optional.empty()));
 
     SecurityIdentity securityIdentity = mock(SecurityIdentity.class);
     when(identityProviderManager.authenticate(any()))
@@ -129,19 +133,47 @@ public class InternalAuthenticationMechanismTest {
 
     assertThatThrownBy(() -> result.await().indefinitely())
         .isInstanceOf(AuthenticationFailedException.class)
-        .hasCause(cause);
-    verify(tokenBroker).verify("invalidToken");
+        .hasMessage("Malformed token");
+    verify(tokenBroker).decode("malformedToken");
     verify(identityProviderManager, never()).authenticate(any(TokenAuthenticationRequest.class));
   }
 
-  @Test
-  public void testAuthenticateWithInvalidTokenMixedAuth() {
-    when(configuration.type()).thenReturn(AuthenticationType.MIXED);
-    when(routingContext.request()).thenReturn(mock(io.vertx.core.http.HttpServerRequest.class));
+  @ParameterizedTest
+  @EnumSource(
+      value = TokenDecodeResult.Status.class,
+      names = {"INVALID_ISSUER", "INVALID_REALM"})
+  public void testAuthenticateWithInvalidTokenInternalAuth(TokenDecodeResult.Status status) {
+    when(configuration.type()).thenReturn(AuthenticationType.INTERNAL);
+    when(routingContext.request()).thenReturn(mock(HttpServerRequest.class));
     when(routingContext.request().getHeader("Authorization")).thenReturn("Bearer invalidToken");
 
-    NotAuthorizedException cause = new NotAuthorizedException("Invalid token");
-    when(tokenBroker.verify("invalidToken")).thenThrow(cause);
+    when(tokenBroker.decode("invalidToken"))
+        .thenReturn(new TokenDecodeResult(status, Optional.empty()));
+
+    SecurityIdentity securityIdentity = mock(SecurityIdentity.class);
+    when(identityProviderManager.authenticate(any()))
+        .thenReturn(Uni.createFrom().item(securityIdentity));
+
+    Uni<SecurityIdentity> result = mechanism.authenticate(routingContext, identityProviderManager);
+
+    assertThatThrownBy(() -> result.await().indefinitely())
+        .isInstanceOf(AuthenticationFailedException.class)
+        .hasMessage(status.message());
+    verify(tokenBroker).decode("invalidToken");
+    verify(identityProviderManager, never()).authenticate(any(TokenAuthenticationRequest.class));
+  }
+
+  @ParameterizedTest
+  @EnumSource(
+      value = TokenDecodeResult.Status.class,
+      names = {"INVALID_ISSUER", "INVALID_REALM"})
+  public void testAuthenticateWithInvalidTokenMixedAuth(TokenDecodeResult.Status status) {
+    when(configuration.type()).thenReturn(AuthenticationType.MIXED);
+    when(routingContext.request()).thenReturn(mock(HttpServerRequest.class));
+    when(routingContext.request().getHeader("Authorization")).thenReturn("Bearer invalidToken");
+
+    when(tokenBroker.decode("invalidToken"))
+        .thenReturn(new TokenDecodeResult(status, Optional.empty()));
 
     SecurityIdentity securityIdentity = mock(SecurityIdentity.class);
     when(identityProviderManager.authenticate(any()))
@@ -150,18 +182,20 @@ public class InternalAuthenticationMechanismTest {
     Uni<SecurityIdentity> result = mechanism.authenticate(routingContext, identityProviderManager);
 
     assertThat(result.await().indefinitely()).isNull();
-    verify(tokenBroker).verify("invalidToken");
+    verify(tokenBroker).decode("invalidToken");
     verify(identityProviderManager, never()).authenticate(any(TokenAuthenticationRequest.class));
   }
 
   @Test
   public void testAuthenticateWithValidToken() {
     when(configuration.type()).thenReturn(AuthenticationType.INTERNAL);
-    when(routingContext.request()).thenReturn(mock(io.vertx.core.http.HttpServerRequest.class));
+    when(routingContext.request()).thenReturn(mock(HttpServerRequest.class));
     when(routingContext.request().getHeader("Authorization")).thenReturn("Bearer validToken");
 
     DecodedToken decodedToken = mock(DecodedToken.class);
-    when(tokenBroker.verify("validToken")).thenReturn(decodedToken);
+    when(tokenBroker.decode("validToken"))
+        .thenReturn(
+            new TokenDecodeResult(TokenDecodeResult.Status.SUCCESS, Optional.of(decodedToken)));
 
     SecurityIdentity securityIdentity = mock(SecurityIdentity.class);
     when(identityProviderManager.authenticate(any()))
@@ -170,7 +204,7 @@ public class InternalAuthenticationMechanismTest {
     Uni<SecurityIdentity> result = mechanism.authenticate(routingContext, identityProviderManager);
 
     assertThat(result.await().indefinitely()).isSameAs(securityIdentity);
-    verify(tokenBroker).verify("validToken");
+    verify(tokenBroker).decode("validToken");
     verify(identityProviderManager).authenticate(any(TokenAuthenticationRequest.class));
   }
 }

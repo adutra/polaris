@@ -32,7 +32,6 @@ import io.quarkus.vertx.http.runtime.security.HttpCredentialTransport;
 import io.quarkus.vertx.http.runtime.security.HttpSecurityUtils;
 import io.smallrye.mutiny.Uni;
 import io.vertx.ext.web.RoutingContext;
-import jakarta.annotation.Nullable;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.util.Collections;
@@ -41,7 +40,7 @@ import org.apache.polaris.service.auth.AuthenticationRealmConfiguration;
 import org.apache.polaris.service.auth.AuthenticationType;
 import org.apache.polaris.service.auth.DecodedToken;
 import org.apache.polaris.service.auth.TokenBroker;
-import org.apache.polaris.service.quarkus.auth.QuarkusPrincipalAuthInfo;
+import org.apache.polaris.service.auth.TokenDecodeResult;
 
 /**
  * A custom {@link HttpAuthenticationMechanism} that handles internal token authentication, that is,
@@ -86,22 +85,21 @@ public class InternalAuthenticationMechanism implements HttpAuthenticationMechan
 
     String credential = authHeader.substring(spaceIdx + 1);
 
-    DecodedToken token;
-    try {
-      token = tokenBroker.verify(credential);
-    } catch (Exception e) {
+    TokenDecodeResult result = tokenBroker.decode(credential);
+
+    if (result.token().isEmpty()) {
       return configuration.type() == AuthenticationType.MIXED
+              && result.status() != TokenDecodeResult.Status.MALFORMED_TOKEN
           ? Uni.createFrom().nullItem() // let other auth mechanisms handle it
-          : Uni.createFrom().failure(new AuthenticationFailedException(e)); // stop here
+          : Uni.createFrom()
+              .failure(new AuthenticationFailedException(result.status().message())); // stop here
     }
 
-    if (token == null) {
-      return Uni.createFrom().nullItem();
-    }
+    DecodedToken token = result.token().get();
 
     return identityProviderManager.authenticate(
         HttpSecurityUtils.setRoutingContextAttribute(
-            new TokenAuthenticationRequest(new InternalPrincipalAuthInfo(credential, token)),
+            new TokenAuthenticationRequest(new InternalTokenCredential(credential, token)),
             context));
   }
 
@@ -124,31 +122,17 @@ public class InternalAuthenticationMechanism implements HttpAuthenticationMechan
         .item(new HttpCredentialTransport(HttpCredentialTransport.Type.AUTHORIZATION, BEARER));
   }
 
-  static class InternalPrincipalAuthInfo extends TokenCredential
-      implements QuarkusPrincipalAuthInfo {
+  static class InternalTokenCredential extends TokenCredential {
 
     private final DecodedToken token;
 
-    InternalPrincipalAuthInfo(String credential, DecodedToken token) {
+    InternalTokenCredential(String credential, DecodedToken token) {
       super(credential, "bearer");
       this.token = token;
     }
 
-    @Nullable
-    @Override
-    public Long getPrincipalId() {
-      return token.getPrincipalId();
-    }
-
-    @Nullable
-    @Override
-    public String getPrincipalName() {
-      return token.getPrincipalName();
-    }
-
-    @Override
-    public Set<String> getPrincipalRoles() {
-      return token.getPrincipalRoles();
+    public DecodedToken getDecodedToken() {
+      return token;
     }
   }
 }
