@@ -28,6 +28,15 @@ import java.util.stream.Collectors;
  */
 public interface DecodedToken extends PrincipalAuthInfo {
 
+  /**
+   * Returns the underlying implementation of the decoded JWT token.
+   *
+   * @param clazz the class of the token to unwrap
+   * @return the underlying implementation of the decoded JWT token, never null
+   * @throws ClassCastException if the token cannot be unwrapped to the specified type
+   */
+  <T> T unwrap(Class<T> clazz);
+
   String getClientId();
 
   String getSub();

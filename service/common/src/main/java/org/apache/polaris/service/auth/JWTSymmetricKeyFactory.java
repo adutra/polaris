@@ -71,6 +71,7 @@ public class JWTSymmetricKeyFactory implements TokenBrokerFactory {
     checkState(secret != null || file != null, "Either file or secret must be set");
     Supplier<String> secretSupplier = secret != null ? () -> secret : readSecretFromDisk(file);
     return new JWTSymmetricKeyBroker(
+        realmContext,
         metaStoreManagerFactory.getOrCreateMetaStoreManager(realmContext),
         (int) maxTokenGeneration.toSeconds(),
         secretSupplier);

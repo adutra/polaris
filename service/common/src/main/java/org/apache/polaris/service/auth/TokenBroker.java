@@ -20,6 +20,7 @@ package org.apache.polaris.service.auth;
 
 import jakarta.annotation.Nonnull;
 import java.util.Optional;
+import org.apache.iceberg.exceptions.NotAuthorizedException;
 import org.apache.polaris.core.PolarisCallContext;
 import org.apache.polaris.core.entity.PolarisEntityType;
 import org.apache.polaris.core.entity.PrincipalEntity;
@@ -109,7 +110,40 @@ public interface TokenBroker {
       final String scope,
       TokenType requestedTokenType);
 
-  DecodedToken verify(String token);
+  /**
+   * Decode a token. This method does not verify the token signature nor its expiration; it only
+   * checks the issuer and realm. Do NOT rely on this method only for authentication: {@link
+   * #verify} must also be called to ensure the token is valid.
+   *
+   * <p>This method never throws an exception. If the token is invalid, it will return a {@link
+   * TokenDecodeResult} with the error code set.
+   *
+   * @param token The token to decode
+   * @return The decode result
+   */
+  TokenDecodeResult decode(String token);
+
+  /**
+   * Verify a token and return the decoded token. This method verifies the token signature and
+   * required claims.
+   *
+   * @param token The decoded token to verify
+   * @return The verified token
+   * @throws NotAuthorizedException if the token is invalid
+   */
+  DecodedToken verify(DecodedToken token);
+
+  /**
+   * Verify a token and return the decoded token. This method verifies the token signature and
+   * required claims. This is a convenience method that calls {@link #decode(String)} and then
+   * {@link #verify(DecodedToken)}.
+   *
+   * @param token The token to verify
+   * @return The verified token
+   */
+  default DecodedToken verify(String token) {
+    return verify(decode(token).token().orElseThrow());
+  }
 
   static @Nonnull Optional<PrincipalEntity> findPrincipalEntity(
       PolarisMetaStoreManager metaStoreManager,
