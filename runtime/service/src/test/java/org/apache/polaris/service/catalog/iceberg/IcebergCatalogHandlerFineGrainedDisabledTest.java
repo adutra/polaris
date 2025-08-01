@@ -21,8 +21,10 @@ package org.apache.polaris.service.catalog.iceberg;
 import com.google.common.collect.ImmutableMap;
 import io.quarkus.test.junit.QuarkusTest;
 import io.quarkus.test.junit.TestProfile;
+import jakarta.enterprise.inject.Any;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
+import jakarta.ws.rs.core.UriInfo;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -34,6 +36,9 @@ import org.apache.polaris.core.entity.PolarisPrivilege;
 import org.apache.polaris.service.admin.PolarisAuthzTestBase;
 import org.apache.polaris.service.catalog.CatalogPrefixParser;
 import org.apache.polaris.service.context.catalog.CallContextCatalogFactory;
+import org.apache.polaris.service.storage.StorageUriTranslator;
+import org.apache.polaris.service.storage.sign.RemoteSigner;
+import org.apache.polaris.service.storage.sign.RemoteSigningTokenService;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
@@ -47,6 +52,10 @@ public class IcebergCatalogHandlerFineGrainedDisabledTest extends PolarisAuthzTe
 
   @Inject CallContextCatalogFactory callContextCatalogFactory;
   @Inject CatalogPrefixParser prefixParser;
+  @Inject UriInfo uriInfo;
+  @Inject @Any Instance<RemoteSigner> requestSigners;
+  @Inject @Any Instance<StorageUriTranslator> uriTranslators;
+  @Inject RemoteSigningTokenService remoteSigningTokenService;
 
   @SuppressWarnings("unchecked")
   private static Instance<org.apache.polaris.core.catalog.ExternalCatalogFactory>
@@ -76,7 +85,11 @@ public class IcebergCatalogHandlerFineGrainedDisabledTest extends PolarisAuthzTe
         catalogHandlerUtils,
         emptyExternalCatalogFactory(),
         storageAccessConfigProvider,
-        eventAttributeMap);
+        eventAttributeMap,
+        uriInfo,
+        requestSigners,
+        uriTranslators,
+        remoteSigningTokenService);
   }
 
   public static class Profile extends PolarisAuthzTestBase.Profile {

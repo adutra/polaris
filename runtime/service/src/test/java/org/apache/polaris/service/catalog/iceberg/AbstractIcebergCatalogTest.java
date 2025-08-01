@@ -41,6 +41,7 @@ import jakarta.inject.Inject;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.lang.reflect.Method;
+import java.nio.file.Path;
 import java.time.Clock;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -165,8 +166,10 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInfo;
+import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -2503,4 +2506,9 @@ public abstract class AbstractIcebergCatalogTest extends CatalogTests<IcebergCat
       }
     }
   }
+
+  @Test
+  @Override
+  @Disabled("Test uses @TempDir and is not compatible with S3 storage")
+  public void testLoadTableWithMissingMetadataFile(@TempDir Path tempDir) {}
 }

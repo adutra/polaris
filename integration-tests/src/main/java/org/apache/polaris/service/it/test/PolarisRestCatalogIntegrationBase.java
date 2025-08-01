@@ -39,6 +39,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Stream;
 import org.apache.hadoop.conf.Configuration;
@@ -82,6 +83,7 @@ import org.apache.polaris.core.admin.model.Catalog;
 import org.apache.polaris.core.admin.model.CatalogGrant;
 import org.apache.polaris.core.admin.model.CatalogPrivilege;
 import org.apache.polaris.core.admin.model.CatalogProperties;
+import org.apache.polaris.core.admin.model.CatalogRole;
 import org.apache.polaris.core.admin.model.GrantResource;
 import org.apache.polaris.core.admin.model.GrantResources;
 import org.apache.polaris.core.admin.model.NamespaceGrant;
@@ -147,6 +149,7 @@ public abstract class PolarisRestCatalogIntegrationBase extends CatalogTests<RES
   private static PolarisApiEndpoints endpoints;
   private static PolarisClient client;
 
+  private String principalRoleName;
   private String principalToken;
   private String adminToken;
 
@@ -251,7 +254,7 @@ public abstract class PolarisRestCatalogIntegrationBase extends CatalogTests<RES
     managementApi = client.managementApi(adminToken);
 
     String principalName = client.newEntityName("snowman-rest");
-    String principalRoleName = client.newEntityName("rest-admin");
+    principalRoleName = client.newEntityName("rest-admin");
     ClientPrincipal testPrincipal = createTestPrincipal(client, principalName, principalRoleName);
     principalToken = obtainToken(client, testPrincipal);
 
@@ -262,7 +265,8 @@ public abstract class PolarisRestCatalogIntegrationBase extends CatalogTests<RES
     currentCatalogName = client.newEntityName(method.getName());
 
     StorageConfigInfo storageConfig = getStorageConfigInfo();
-    URI testRuntimeURI = URI.create(storageConfig.getAllowedLocations().getFirst());
+    URI testRuntimeURI =
+        URI.create(RESTUtil.stripTrailingSlash(storageConfig.getAllowedLocations().getFirst()));
     catalogBaseLocation = testRuntimeURI + "/" + CATALOG_LOCATION_SUBPATH;
     externalCatalogBaseLocation =
         URI.create(
@@ -303,7 +307,7 @@ public abstract class PolarisRestCatalogIntegrationBase extends CatalogTests<RES
             .build();
 
     createPolarisCatalog(catalog);
-    managementApi.makeAdmin(principalRoleName, catalog);
+    makeAdmin(catalog);
 
     ImmutableMap.Builder<String, String> restCatalogConfigBuilder = ImmutableMap.builder();
 
@@ -343,6 +347,55 @@ public abstract class PolarisRestCatalogIntegrationBase extends CatalogTests<RES
         new ClientCredentials(
             principalWithCredentials.getCredentials().getClientId(),
             principalWithCredentials.getCredentials().getClientSecret()));
+  }
+
+  /** Creates a test principal with the specified privileges. */
+  protected ClientPrincipal createTestPrincipal(
+      Set<CatalogPrivilege> catalogPrivileges,
+      Set<NamespacePrivilege> namespacePrivileges,
+      Set<TablePrivilege> tablePrivileges) {
+
+    String principalName = client.newEntityName("principal");
+    String principalRoleName = client.newEntityName("principal-role");
+    String catalogRoleName = client.newEntityName("catalog-role");
+
+    ClientPrincipal testPrincipal = createTestPrincipal(client, principalName, principalRoleName);
+
+    @SuppressWarnings("resource")
+    String catalogName = catalog().properties().get("warehouse");
+
+    managementApi.createCatalogRole(catalogName, catalogRoleName);
+
+    for (CatalogPrivilege privilege : catalogPrivileges) {
+      managementApi.addGrant(
+          catalogName,
+          catalogRoleName,
+          new CatalogGrant(privilege, GrantResource.TypeEnum.CATALOG));
+    }
+
+    for (NamespacePrivilege privilege : namespacePrivileges) {
+      managementApi.addGrant(
+          catalogName,
+          catalogRoleName,
+          new NamespaceGrant(List.of(NS.toString()), privilege, GrantResource.TypeEnum.NAMESPACE));
+    }
+
+    for (TablePrivilege privilege : tablePrivileges) {
+      managementApi.addGrant(
+          catalogName,
+          catalogRoleName,
+          TableGrant.builder()
+              .setType(GrantResource.TypeEnum.TABLE)
+              .setPrivilege(privilege)
+              .setNamespace(List.of(NS.toString()))
+              .setTableName(TABLE.name())
+              .build());
+    }
+
+    CatalogRole catalogRole = managementApi.getCatalogRole(catalogName, catalogRoleName);
+    managementApi.grantCatalogRoleToPrincipalRole(principalRoleName, catalogName, catalogRole);
+
+    return testPrincipal;
   }
 
   /**
@@ -388,6 +441,11 @@ public abstract class PolarisRestCatalogIntegrationBase extends CatalogTests<RES
     managementApi.createCatalog(catalog);
   }
 
+  /** Makes the main test principal an admin on the catalog. */
+  protected void makeAdmin(Catalog catalog) {
+    managementApi.makeAdmin(principalRoleName, catalog);
+  }
+
   /**
    * Initialize a RESTCatalog for testing.
    *
@@ -405,6 +463,13 @@ public abstract class PolarisRestCatalogIntegrationBase extends CatalogTests<RES
     extraPropertiesBuilder.putAll(additionalProperties);
     return IcebergHelper.restCatalog(
         endpoints, currentCatalogName, extraPropertiesBuilder.buildKeepingLast(), principalToken);
+  }
+
+  /** Initialize a RESTCatalog for testing for a different principal. */
+  protected RESTCatalog initCatalog(ClientPrincipal testPrincipal) {
+    String principalToken = obtainToken(client, testPrincipal);
+    return IcebergHelper.restCatalog(
+        endpoints, currentCatalogName, restCatalogConfig, principalToken);
   }
 
   /**
@@ -710,7 +775,9 @@ public abstract class PolarisRestCatalogIntegrationBase extends CatalogTests<RES
    * EXTERNAL catalogs, so register a table and try to load it with the REST client configured to
    * try to fetch vended credentials. Expect a ForbiddenException.
    */
-  @CatalogConfig(Catalog.TypeEnum.EXTERNAL)
+  @CatalogConfig(
+      value = Catalog.TypeEnum.EXTERNAL,
+      properties = {"polaris.config.enable.credential.vending", "false"})
   @RestCatalogConfig({"header.X-Iceberg-Access-Delegation", "vended-credentials"})
   @Test
   public void testLoadTableWithAccessDelegationForExternalCatalogWithConfigDisabled() {

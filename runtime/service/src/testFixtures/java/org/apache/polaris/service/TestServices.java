@@ -27,6 +27,7 @@ import jakarta.annotation.Nonnull;
 import jakarta.annotation.Nullable;
 import jakarta.enterprise.inject.Instance;
 import jakarta.ws.rs.core.SecurityContext;
+import jakarta.ws.rs.core.UriInfo;
 import java.security.Principal;
 import java.time.Clock;
 import java.time.Instant;
@@ -93,6 +94,9 @@ import org.apache.polaris.service.persistence.InMemoryPolarisMetaStoreManagerFac
 import org.apache.polaris.service.reporting.DefaultMetricsReporter;
 import org.apache.polaris.service.secrets.UnsafeInMemorySecretsManagerFactory;
 import org.apache.polaris.service.storage.PolarisStorageIntegrationProviderImpl;
+import org.apache.polaris.service.storage.StorageUriTranslator;
+import org.apache.polaris.service.storage.sign.RemoteSigner;
+import org.apache.polaris.service.storage.sign.RemoteSigningTokenService;
 import org.apache.polaris.service.task.TaskExecutor;
 import org.mockito.Mockito;
 import software.amazon.awssdk.services.sts.StsClient;
@@ -307,7 +311,11 @@ public record TestServices(
           new StorageCredentialsVendor(metaStoreManager, callContext);
       StorageAccessConfigProvider storageAccessConfigProvider =
           new StorageAccessConfigProvider(
-              storageCredentialCache, storageCredentialsVendor, principal);
+              storageCredentialCache,
+              storageCredentialsVendor,
+              principal,
+              storageIntegrationProvider);
+
       FileIOFactory fileIOFactory = fileIOFactorySupplier.get();
 
       TaskExecutor taskExecutor = Mockito.mock(TaskExecutor.class);
@@ -336,6 +344,16 @@ public record TestServices(
       Mockito.when(externalCatalogFactory.isUnsatisfied()).thenReturn(true);
 
       EventAttributeMap eventAttributeMap = new EventAttributeMap();
+
+      @SuppressWarnings("unchecked")
+      Instance<RemoteSigner> remoteSigners = Mockito.mock(Instance.class);
+
+      @SuppressWarnings("unchecked")
+      Instance<StorageUriTranslator> uriTranslators = Mockito.mock(Instance.class);
+
+      RemoteSigningTokenService remoteSigningTokenService =
+          Mockito.mock(RemoteSigningTokenService.class);
+
       IcebergCatalogAdapter catalogService =
           new IcebergCatalogAdapter(
               diagnostics,
@@ -353,6 +371,10 @@ public record TestServices(
               externalCatalogFactory,
               storageAccessConfigProvider,
               new DefaultMetricsReporter(),
+              Mockito.mock(UriInfo.class),
+              remoteSigners,
+              uriTranslators,
+              remoteSigningTokenService,
               Clock.systemUTC(),
               eventAttributeMap);
 

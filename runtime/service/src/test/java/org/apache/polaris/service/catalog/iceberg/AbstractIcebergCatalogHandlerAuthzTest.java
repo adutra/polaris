@@ -19,9 +19,12 @@
 package org.apache.polaris.service.catalog.iceberg;
 
 import com.google.common.collect.ImmutableMap;
+import jakarta.enterprise.inject.Any;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
+import jakarta.ws.rs.core.UriInfo;
 import java.time.Instant;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -67,10 +70,14 @@ import org.apache.polaris.core.entity.PrincipalEntity;
 import org.apache.polaris.core.persistence.dao.entity.CreatePrincipalResult;
 import org.apache.polaris.core.persistence.resolver.PolarisResolutionManifest;
 import org.apache.polaris.service.admin.PolarisAuthzTestBase;
+import org.apache.polaris.service.catalog.AccessDelegationMode;
 import org.apache.polaris.service.catalog.CatalogPrefixParser;
 import org.apache.polaris.service.context.catalog.CallContextCatalogFactory;
 import org.apache.polaris.service.context.catalog.PolarisCallContextCatalogFactory;
 import org.apache.polaris.service.http.IfNoneMatch;
+import org.apache.polaris.service.storage.StorageUriTranslator;
+import org.apache.polaris.service.storage.sign.RemoteSigner;
+import org.apache.polaris.service.storage.sign.RemoteSigningTokenService;
 import org.apache.polaris.service.types.NotificationRequest;
 import org.apache.polaris.service.types.NotificationType;
 import org.apache.polaris.service.types.TableUpdateNotification;
@@ -94,11 +101,14 @@ import org.mockito.Mockito;
 public abstract class AbstractIcebergCatalogHandlerAuthzTest extends PolarisAuthzTestBase {
 
   @Inject CallContextCatalogFactory callContextCatalogFactory;
-  @Inject Instance<ExternalCatalogFactory> externalCatalogFactories;
   @Inject CatalogPrefixParser prefixParser;
+  @Inject UriInfo uriInfo;
+  @Inject @Any Instance<RemoteSigner> requestSigners;
+  @Inject @Any Instance<StorageUriTranslator> uriTranslators;
+  @Inject RemoteSigningTokenService remoteSigningTokenService;
 
   @SuppressWarnings("unchecked")
-  private static Instance<ExternalCatalogFactory> emptyExternalCatalogFactory() {
+  static Instance<ExternalCatalogFactory> emptyExternalCatalogFactory() {
     Instance<ExternalCatalogFactory> mock = Mockito.mock(Instance.class);
     Mockito.when(mock.select(Mockito.any())).thenReturn(mock);
     Mockito.when(mock.isUnsatisfied()).thenReturn(true);
@@ -133,7 +143,11 @@ public abstract class AbstractIcebergCatalogHandlerAuthzTest extends PolarisAuth
         catalogHandlerUtils,
         emptyExternalCatalogFactory(),
         storageAccessConfigProvider,
-        eventAttributeMap);
+        eventAttributeMap,
+        uriInfo,
+        requestSigners,
+        uriTranslators,
+        remoteSigningTokenService);
   }
 
   protected void doTestInsufficientPrivileges(
@@ -275,7 +289,11 @@ public abstract class AbstractIcebergCatalogHandlerAuthzTest extends PolarisAuth
             catalogHandlerUtils,
             emptyExternalCatalogFactory(),
             storageAccessConfigProvider,
-            eventAttributeMap);
+            eventAttributeMap,
+            uriInfo,
+            requestSigners,
+            uriTranslators,
+            remoteSigningTokenService);
 
     // a variety of actions are all disallowed because the principal's credentials must be rotated
     doTestInsufficientPrivileges(
@@ -315,7 +333,11 @@ public abstract class AbstractIcebergCatalogHandlerAuthzTest extends PolarisAuth
             catalogHandlerUtils,
             emptyExternalCatalogFactory(),
             storageAccessConfigProvider,
-            eventAttributeMap);
+            eventAttributeMap,
+            uriInfo,
+            requestSigners,
+            uriTranslators,
+            remoteSigningTokenService);
 
     doTestSufficientPrivilegeSets(
         List.of(Set.of(PolarisPrivilege.NAMESPACE_LIST)),
@@ -645,7 +667,10 @@ public abstract class AbstractIcebergCatalogHandlerAuthzTest extends PolarisAuth
         () -> {
           newWrapper(Set.of(PRINCIPAL_ROLE1))
               .createTableDirectWithWriteDelegation(
-                  NS2, createDirectWithWriteDelegationRequest, Optional.empty());
+                  NS2,
+                  createDirectWithWriteDelegationRequest,
+                  EnumSet.of(AccessDelegationMode.VENDED_CREDENTIALS),
+                  Optional.empty());
         },
         () -> {
           newWrapper(Set.of(PRINCIPAL_ROLE2)).dropTableWithPurge(newtable);
@@ -676,7 +701,10 @@ public abstract class AbstractIcebergCatalogHandlerAuthzTest extends PolarisAuth
         () -> {
           newWrapper(Set.of(PRINCIPAL_ROLE1))
               .createTableDirectWithWriteDelegation(
-                  NS2, createDirectWithWriteDelegationRequest, Optional.empty());
+                  NS2,
+                  createDirectWithWriteDelegationRequest,
+                  EnumSet.of(AccessDelegationMode.VENDED_CREDENTIALS),
+                  Optional.empty());
         });
   }
 
@@ -750,7 +778,10 @@ public abstract class AbstractIcebergCatalogHandlerAuthzTest extends PolarisAuth
         () -> {
           newWrapper(Set.of(PRINCIPAL_ROLE1))
               .createTableStagedWithWriteDelegation(
-                  NS2, createStagedWithWriteDelegationRequest, Optional.empty());
+                  NS2,
+                  createStagedWithWriteDelegationRequest,
+                  EnumSet.of(AccessDelegationMode.VENDED_CREDENTIALS),
+                  Optional.empty());
         },
         // createTableStagedWithWriteDelegation doesn't actually commit any metadata
         null,
@@ -780,7 +811,10 @@ public abstract class AbstractIcebergCatalogHandlerAuthzTest extends PolarisAuth
         () -> {
           newWrapper(Set.of(PRINCIPAL_ROLE1))
               .createTableStagedWithWriteDelegation(
-                  NS2, createStagedWithWriteDelegationRequest, Optional.empty());
+                  NS2,
+                  createStagedWithWriteDelegationRequest,
+                  EnumSet.of(AccessDelegationMode.VENDED_CREDENTIALS),
+                  Optional.empty());
         });
   }
 
@@ -924,7 +958,13 @@ public abstract class AbstractIcebergCatalogHandlerAuthzTest extends PolarisAuth
             PolarisPrivilege.TABLE_READ_DATA,
             PolarisPrivilege.TABLE_WRITE_DATA,
             PolarisPrivilege.CATALOG_MANAGE_CONTENT),
-        () -> newWrapper().loadTableWithAccessDelegation(TABLE_NS1A_2, "all", Optional.empty()),
+        () ->
+            newWrapper()
+                .loadTableWithAccessDelegation(
+                    TABLE_NS1A_2,
+                    "all",
+                    EnumSet.of(AccessDelegationMode.VENDED_CREDENTIALS),
+                    Optional.empty()),
         null /* cleanupAction */);
   }
 
@@ -940,7 +980,13 @@ public abstract class AbstractIcebergCatalogHandlerAuthzTest extends PolarisAuth
             PolarisPrivilege.TABLE_CREATE,
             PolarisPrivilege.TABLE_LIST,
             PolarisPrivilege.TABLE_DROP),
-        () -> newWrapper().loadTableWithAccessDelegation(TABLE_NS1A_2, "all", Optional.empty()));
+        () ->
+            newWrapper()
+                .loadTableWithAccessDelegation(
+                    TABLE_NS1A_2,
+                    "all",
+                    EnumSet.of(AccessDelegationMode.VENDED_CREDENTIALS),
+                    Optional.empty()));
   }
 
   @Test
@@ -953,7 +999,13 @@ public abstract class AbstractIcebergCatalogHandlerAuthzTest extends PolarisAuth
             PolarisPrivilege.TABLE_READ_DATA,
             PolarisPrivilege.TABLE_WRITE_DATA,
             PolarisPrivilege.CATALOG_MANAGE_CONTENT),
-        () -> newWrapper().loadTableWithAccessDelegation(TABLE_NS1A_2, "all", Optional.empty()),
+        () ->
+            newWrapper()
+                .loadTableWithAccessDelegation(
+                    TABLE_NS1A_2,
+                    "all",
+                    EnumSet.of(AccessDelegationMode.VENDED_CREDENTIALS),
+                    Optional.empty()),
         null /* cleanupAction */);
   }
 
@@ -969,7 +1021,13 @@ public abstract class AbstractIcebergCatalogHandlerAuthzTest extends PolarisAuth
             PolarisPrivilege.TABLE_CREATE,
             PolarisPrivilege.TABLE_LIST,
             PolarisPrivilege.TABLE_DROP),
-        () -> newWrapper().loadTableWithAccessDelegation(TABLE_NS1A_2, "all", Optional.empty()));
+        () ->
+            newWrapper()
+                .loadTableWithAccessDelegation(
+                    TABLE_NS1A_2,
+                    "all",
+                    EnumSet.of(AccessDelegationMode.VENDED_CREDENTIALS),
+                    Optional.empty()));
   }
 
   @Test
@@ -982,7 +1040,11 @@ public abstract class AbstractIcebergCatalogHandlerAuthzTest extends PolarisAuth
         () ->
             newWrapper()
                 .loadTableWithAccessDelegationIfStale(
-                    TABLE_NS1A_2, IfNoneMatch.fromHeader("W/\"0:0\""), "all", Optional.empty()),
+                    TABLE_NS1A_2,
+                    IfNoneMatch.fromHeader("W/\"0:0\""),
+                    "all",
+                    EnumSet.of(AccessDelegationMode.VENDED_CREDENTIALS),
+                    Optional.empty()),
         null /* cleanupAction */);
   }
 
@@ -1001,7 +1063,11 @@ public abstract class AbstractIcebergCatalogHandlerAuthzTest extends PolarisAuth
         () ->
             newWrapper()
                 .loadTableWithAccessDelegationIfStale(
-                    TABLE_NS1A_2, IfNoneMatch.fromHeader("W/\"0:0\""), "all", Optional.empty()));
+                    TABLE_NS1A_2,
+                    IfNoneMatch.fromHeader("W/\"0:0\""),
+                    "all",
+                    EnumSet.of(AccessDelegationMode.VENDED_CREDENTIALS),
+                    Optional.empty()));
   }
 
   @Test
@@ -1017,7 +1083,11 @@ public abstract class AbstractIcebergCatalogHandlerAuthzTest extends PolarisAuth
         () ->
             newWrapper()
                 .loadTableWithAccessDelegationIfStale(
-                    TABLE_NS1A_2, IfNoneMatch.fromHeader("W/\"0:0\""), "all", Optional.empty()),
+                    TABLE_NS1A_2,
+                    IfNoneMatch.fromHeader("W/\"0:0\""),
+                    "all",
+                    EnumSet.of(AccessDelegationMode.VENDED_CREDENTIALS),
+                    Optional.empty()),
         null /* cleanupAction */);
   }
 
@@ -1036,7 +1106,11 @@ public abstract class AbstractIcebergCatalogHandlerAuthzTest extends PolarisAuth
         () ->
             newWrapper()
                 .loadTableWithAccessDelegationIfStale(
-                    TABLE_NS1A_2, IfNoneMatch.fromHeader("W/\"0:0\""), "all", Optional.empty()));
+                    TABLE_NS1A_2,
+                    IfNoneMatch.fromHeader("W/\"0:0\""),
+                    "all",
+                    EnumSet.of(AccessDelegationMode.VENDED_CREDENTIALS),
+                    Optional.empty()));
   }
 
   @Test
@@ -1205,7 +1279,11 @@ public abstract class AbstractIcebergCatalogHandlerAuthzTest extends PolarisAuth
         catalogHandlerUtils,
         emptyExternalCatalogFactory(),
         storageAccessConfigProvider,
-        eventAttributeMap);
+        eventAttributeMap,
+        uriInfo,
+        requestSigners,
+        uriTranslators,
+        remoteSigningTokenService);
   }
 
   @Test
@@ -2244,5 +2322,175 @@ public abstract class AbstractIcebergCatalogHandlerAuthzTest extends PolarisAuth
         () ->
             newWrapper()
                 .loadTable(TABLE_NS1A_2, "all")); // Load table requires different privileges
+  }
+
+  @Test
+  public void testCreateTableDirectWithRemoteSigningSufficientPrivileges() {
+    assertSuccess(
+        adminService.grantPrivilegeOnCatalogToRole(
+            CATALOG_NAME, CATALOG_ROLE2, PolarisPrivilege.TABLE_DROP));
+    assertSuccess(
+        adminService.grantPrivilegeOnCatalogToRole(
+            CATALOG_NAME, CATALOG_ROLE2, PolarisPrivilege.TABLE_WRITE_DATA));
+
+    TableIdentifier newtable = TableIdentifier.of(NS2, "newtable");
+    CreateTableRequest createDirectWithWriteDelegationRequest =
+        CreateTableRequest.builder().withName("newtable").withSchema(SCHEMA).stageCreate().build();
+
+    doTestSufficientPrivilegeSets(
+        List.of(
+            Set.of(
+                PolarisPrivilege.TABLE_CREATE,
+                PolarisPrivilege.TABLE_WRITE_DATA,
+                PolarisPrivilege.TABLE_REMOTE_SIGN),
+            Set.of(PolarisPrivilege.CATALOG_MANAGE_CONTENT)),
+        () ->
+            newWrapper(Set.of(PRINCIPAL_ROLE1))
+                .createTableDirectWithWriteDelegation(
+                    NS2,
+                    createDirectWithWriteDelegationRequest,
+                    EnumSet.of(AccessDelegationMode.REMOTE_SIGNING),
+                    Optional.empty()),
+        () -> {
+          newWrapper(Set.of(PRINCIPAL_ROLE2)).dropTableWithPurge(newtable);
+        },
+        PRINCIPAL_NAME);
+  }
+
+  @Test
+  public void testCreateTableDirectWithRemoteSigningInsufficientPermissions() {
+    CreateTableRequest createDirectWithWriteDelegationRequest =
+        CreateTableRequest.builder()
+            .withName("directtable")
+            .withSchema(SCHEMA)
+            .stageCreate()
+            .build();
+
+    doTestInsufficientPrivileges(
+        List.of(
+            PolarisPrivilege.NAMESPACE_FULL_METADATA,
+            PolarisPrivilege.VIEW_FULL_METADATA,
+            PolarisPrivilege.TABLE_DROP,
+            PolarisPrivilege.TABLE_CREATE,
+            PolarisPrivilege.TABLE_READ_PROPERTIES,
+            PolarisPrivilege.TABLE_WRITE_PROPERTIES,
+            PolarisPrivilege.TABLE_READ_DATA,
+            PolarisPrivilege.TABLE_WRITE_DATA,
+            PolarisPrivilege.TABLE_LIST,
+            PolarisPrivilege.TABLE_REMOTE_SIGN),
+        () -> {
+          newWrapper(Set.of(PRINCIPAL_ROLE1))
+              .createTableDirectWithWriteDelegation(
+                  NS2,
+                  createDirectWithWriteDelegationRequest,
+                  EnumSet.of(AccessDelegationMode.REMOTE_SIGNING),
+                  Optional.empty());
+        });
+  }
+
+  @Test
+  public void testCreateTableStagedWithRemoteSigningSufficientPrivileges() {
+    assertSuccess(
+        adminService.grantPrivilegeOnCatalogToRole(
+            CATALOG_NAME, CATALOG_ROLE2, PolarisPrivilege.TABLE_DROP));
+
+    CreateTableRequest createTableRequest =
+        CreateTableRequest.builder()
+            .withName("stagetable")
+            .withSchema(SCHEMA)
+            .stageCreate()
+            .build();
+
+    doTestSufficientPrivilegeSets(
+        List.of(
+            Set.of(
+                PolarisPrivilege.TABLE_CREATE,
+                PolarisPrivilege.TABLE_WRITE_DATA,
+                PolarisPrivilege.TABLE_REMOTE_SIGN),
+            Set.of(PolarisPrivilege.CATALOG_MANAGE_CONTENT)),
+        () ->
+            newWrapper(Set.of(PRINCIPAL_ROLE1))
+                .createTableStagedWithWriteDelegation(
+                    NS2,
+                    createTableRequest,
+                    EnumSet.of(AccessDelegationMode.REMOTE_SIGNING),
+                    Optional.empty()),
+        () -> {},
+        PRINCIPAL_NAME);
+  }
+
+  @Test
+  public void testCreateTableStagedWithRemoteSigningInsufficientPermissions() {
+    CreateTableRequest createTableRequest =
+        CreateTableRequest.builder()
+            .withName("stagetable")
+            .withSchema(SCHEMA)
+            .stageCreate()
+            .build();
+
+    doTestInsufficientPrivileges(
+        List.of(
+            PolarisPrivilege.NAMESPACE_FULL_METADATA,
+            PolarisPrivilege.VIEW_FULL_METADATA,
+            PolarisPrivilege.TABLE_DROP,
+            PolarisPrivilege.TABLE_CREATE,
+            PolarisPrivilege.TABLE_READ_PROPERTIES,
+            PolarisPrivilege.TABLE_WRITE_PROPERTIES,
+            PolarisPrivilege.TABLE_READ_DATA,
+            PolarisPrivilege.TABLE_WRITE_DATA,
+            PolarisPrivilege.TABLE_LIST,
+            PolarisPrivilege.TABLE_REMOTE_SIGN),
+        () -> {
+          newWrapper(Set.of(PRINCIPAL_ROLE1))
+              .createTableStagedWithWriteDelegation(
+                  NS2,
+                  createTableRequest,
+                  EnumSet.of(AccessDelegationMode.REMOTE_SIGNING),
+                  Optional.empty());
+        });
+  }
+
+  @Test
+  public void testLoadTableWithReadRemoteSigningSufficientPrivileges() {
+    doTestSufficientPrivilegeSets(
+        List.of(
+            Set.of(PolarisPrivilege.TABLE_READ_DATA, PolarisPrivilege.TABLE_REMOTE_SIGN),
+            Set.of(PolarisPrivilege.TABLE_WRITE_DATA, PolarisPrivilege.TABLE_REMOTE_SIGN),
+            Set.of(PolarisPrivilege.CATALOG_MANAGE_CONTENT)),
+        () ->
+            newWrapper()
+                .loadTableWithAccessDelegationIfStale(
+                    TABLE_NS1A_2,
+                    IfNoneMatch.fromHeader("W/\"0:0\""),
+                    "all",
+                    EnumSet.of(AccessDelegationMode.REMOTE_SIGNING),
+                    Optional.empty()),
+        null /* cleanupAction */,
+        PRINCIPAL_NAME);
+  }
+
+  @Test
+  public void testLoadTableWithReadRemoteSigningIfStaleInsufficientPermissions() {
+    doTestInsufficientPrivileges(
+        List.of(
+            PolarisPrivilege.NAMESPACE_FULL_METADATA,
+            PolarisPrivilege.VIEW_FULL_METADATA,
+            PolarisPrivilege.TABLE_FULL_METADATA,
+            PolarisPrivilege.TABLE_READ_PROPERTIES,
+            PolarisPrivilege.TABLE_WRITE_PROPERTIES,
+            PolarisPrivilege.TABLE_READ_DATA,
+            PolarisPrivilege.TABLE_WRITE_DATA,
+            PolarisPrivilege.TABLE_CREATE,
+            PolarisPrivilege.TABLE_LIST,
+            PolarisPrivilege.TABLE_DROP,
+            PolarisPrivilege.TABLE_REMOTE_SIGN),
+        () ->
+            newWrapper()
+                .loadTableWithAccessDelegationIfStale(
+                    TABLE_NS1A_2,
+                    IfNoneMatch.fromHeader("W/\"0:0\""),
+                    "all",
+                    EnumSet.of(AccessDelegationMode.REMOTE_SIGNING),
+                    Optional.empty()));
   }
 }

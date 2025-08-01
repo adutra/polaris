@@ -16,20 +16,15 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.polaris.service.catalog;
 
-import jakarta.enterprise.context.ApplicationScoped;
+package org.apache.polaris.service.storage.sign;
 
-@ApplicationScoped
-public class DefaultCatalogPrefixParser implements CatalogPrefixParser {
+import org.apache.iceberg.rest.requests.RemoteSignRequest;
+import org.apache.iceberg.rest.responses.RemoteSignResponse;
 
-  @Override
-  public String prefixToCatalogName(String prefix) {
-    return prefix;
-  }
+/** Interface for signing requests remotely. */
+public interface RemoteSigner {
 
-  @Override
-  public String catalogNameToPrefix(String catalogName) {
-    return catalogName;
-  }
+  /** Signs a request. */
+  RemoteSignResponse signRequest(RemoteSignRequest signingRequest);
 }

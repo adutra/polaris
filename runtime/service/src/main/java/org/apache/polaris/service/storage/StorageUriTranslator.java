@@ -16,20 +16,21 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.polaris.service.catalog;
 
-import jakarta.enterprise.context.ApplicationScoped;
+package org.apache.polaris.service.storage;
 
-@ApplicationScoped
-public class DefaultCatalogPrefixParser implements CatalogPrefixParser {
+import jakarta.annotation.Nullable;
+import java.net.URI;
 
-  @Override
-  public String prefixToCatalogName(String prefix) {
-    return prefix;
-  }
+public interface StorageUriTranslator {
 
-  @Override
-  public String catalogNameToPrefix(String catalogName) {
-    return catalogName;
-  }
+  /**
+   * Translates HTTP(S) URLs into logical, object-store-specific URIs.
+   *
+   * @param uri the HTTP(S) URI to translate
+   * @param endpointUri the optional endpoint URI to use for translation, if known
+   * @return the translated storage URI string
+   * @throws IllegalArgumentException if the URI is not a valid HTTP(S) URL or cannot be translated
+   */
+  String translate(URI uri, @Nullable URI endpointUri);
 }

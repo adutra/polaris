@@ -540,4 +540,14 @@ public class FeatureConfiguration<T> extends PolarisConfiguration<T> {
           .description("Metadata batch size for tasks that clean up dropped tables' files.")
           .defaultValue(10)
           .buildFeatureConfiguration();
+
+  public static final FeatureConfiguration<Boolean> REMOTE_SIGNING_ENABLED =
+      PolarisConfiguration.<Boolean>builder()
+          .key("REMOTE_SIGNING_ENABLED")
+          .catalogConfig("polaris.config.remote-signing.enabled")
+          .description(
+              "If true, the remote signing endpoints are enabled either globally, or for a specific catalog. "
+                  + "This feature is currently experimental and may change in future releases.")
+          .defaultValue(false)
+          .buildFeatureConfiguration();
 }

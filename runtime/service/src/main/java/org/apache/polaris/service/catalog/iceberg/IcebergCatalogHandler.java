@@ -20,6 +20,8 @@ package org.apache.polaris.service.catalog.iceberg;
 
 import static org.apache.polaris.core.config.FeatureConfiguration.ALLOW_FEDERATED_CATALOGS_CREDENTIAL_VENDING;
 import static org.apache.polaris.core.config.FeatureConfiguration.LIST_PAGINATION_ENABLED;
+import static org.apache.polaris.service.catalog.AccessDelegationMode.REMOTE_SIGNING;
+import static org.apache.polaris.service.catalog.AccessDelegationMode.UNKNOWN;
 import static org.apache.polaris.service.catalog.AccessDelegationMode.VENDED_CREDENTIALS;
 
 import com.google.common.base.Preconditions;
@@ -31,7 +33,9 @@ import io.smallrye.common.annotation.Identifier;
 import jakarta.annotation.Nonnull;
 import jakarta.annotation.Nullable;
 import jakarta.enterprise.inject.Instance;
+import jakarta.ws.rs.core.UriInfo;
 import java.io.Closeable;
+import java.net.URI;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -65,6 +69,7 @@ import org.apache.iceberg.exceptions.ForbiddenException;
 import org.apache.iceberg.exceptions.NoSuchTableException;
 import org.apache.iceberg.exceptions.NotFoundException;
 import org.apache.iceberg.rest.Endpoint;
+import org.apache.iceberg.rest.ResourcePaths;
 import org.apache.iceberg.rest.credentials.ImmutableCredential;
 import org.apache.iceberg.rest.requests.CommitTransactionRequest;
 import org.apache.iceberg.rest.requests.CreateNamespaceRequest;
@@ -72,6 +77,7 @@ import org.apache.iceberg.rest.requests.CreateTableRequest;
 import org.apache.iceberg.rest.requests.CreateViewRequest;
 import org.apache.iceberg.rest.requests.RegisterTableRequest;
 import org.apache.iceberg.rest.requests.RegisterViewRequest;
+import org.apache.iceberg.rest.requests.RemoteSignRequest;
 import org.apache.iceberg.rest.requests.RenameTableRequest;
 import org.apache.iceberg.rest.requests.UpdateNamespacePropertiesRequest;
 import org.apache.iceberg.rest.requests.UpdateTableRequest;
@@ -82,6 +88,7 @@ import org.apache.iceberg.rest.responses.ListNamespacesResponse;
 import org.apache.iceberg.rest.responses.ListTablesResponse;
 import org.apache.iceberg.rest.responses.LoadTableResponse;
 import org.apache.iceberg.rest.responses.LoadViewResponse;
+import org.apache.iceberg.rest.responses.RemoteSignResponse;
 import org.apache.iceberg.rest.responses.UpdateNamespacePropertiesResponse;
 import org.apache.polaris.core.PolarisDiagnostics;
 import org.apache.polaris.core.auth.PolarisAuthorizableOperation;
@@ -89,6 +96,7 @@ import org.apache.polaris.core.auth.PolarisAuthorizer;
 import org.apache.polaris.core.auth.PolarisPrincipal;
 import org.apache.polaris.core.catalog.ExternalCatalogFactory;
 import org.apache.polaris.core.config.FeatureConfiguration;
+import org.apache.polaris.core.config.RealmConfig;
 import org.apache.polaris.core.connection.ConnectionConfigInfoDpo;
 import org.apache.polaris.core.connection.ConnectionType;
 import org.apache.polaris.core.context.CallContext;
@@ -111,7 +119,10 @@ import org.apache.polaris.core.persistence.resolver.Resolver;
 import org.apache.polaris.core.persistence.resolver.ResolverFactory;
 import org.apache.polaris.core.persistence.resolver.ResolverStatus;
 import org.apache.polaris.core.rest.PolarisEndpoints;
+import org.apache.polaris.core.storage.LocationRestrictions;
 import org.apache.polaris.core.storage.PolarisStorageActions;
+import org.apache.polaris.core.storage.PolarisStorageConfigurationInfo.StorageType;
+import org.apache.polaris.core.storage.RemoteSigningProperty;
 import org.apache.polaris.core.storage.StorageAccessConfig;
 import org.apache.polaris.core.storage.StorageUtil;
 import org.apache.polaris.service.catalog.AccessDelegationMode;
@@ -126,6 +137,10 @@ import org.apache.polaris.service.events.EventAttributeMap;
 import org.apache.polaris.service.events.EventAttributes;
 import org.apache.polaris.service.http.IcebergHttpUtil;
 import org.apache.polaris.service.http.IfNoneMatch;
+import org.apache.polaris.service.storage.StorageUriTranslator;
+import org.apache.polaris.service.storage.sign.RemoteSigner;
+import org.apache.polaris.service.storage.sign.RemoteSigningToken;
+import org.apache.polaris.service.storage.sign.RemoteSigningTokenService;
 import org.apache.polaris.service.types.NotificationRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -188,12 +203,18 @@ public class IcebergCatalogHandler extends CatalogHandler implements AutoCloseab
   private final CatalogHandlerUtils catalogHandlerUtils;
   private final StorageAccessConfigProvider storageAccessConfigProvider;
   private final EventAttributeMap eventAttributeMap;
+  private final UriInfo uriInfo;
+  private final Instance<RemoteSigner> requestSigners;
+  private final Instance<StorageUriTranslator> uriTranslators;
+  private final RemoteSigningTokenService remoteSigningTokenService;
 
   // Catalog instance will be initialized after authorizing resolver successfully resolves
   // the catalog entity.
   protected Catalog baseCatalog = null;
   protected SupportsNamespaces namespaceCatalog = null;
   protected ViewCatalog viewCatalog = null;
+
+  private boolean remoteSigningReadWrite;
 
   public static final String SNAPSHOTS_ALL = "all";
   public static final String SNAPSHOTS_REFS = "refs";
@@ -214,7 +235,11 @@ public class IcebergCatalogHandler extends CatalogHandler implements AutoCloseab
       CatalogHandlerUtils catalogHandlerUtils,
       Instance<ExternalCatalogFactory> externalCatalogFactories,
       StorageAccessConfigProvider storageAccessConfigProvider,
-      EventAttributeMap eventAttributeMap) {
+      EventAttributeMap eventAttributeMap,
+      UriInfo uriInfo,
+      Instance<RemoteSigner> requestSigners,
+      Instance<StorageUriTranslator> uriTranslators,
+      RemoteSigningTokenService remoteSigningTokenService) {
     super(
         diagnostics,
         callContext,
@@ -232,6 +257,10 @@ public class IcebergCatalogHandler extends CatalogHandler implements AutoCloseab
     this.catalogHandlerUtils = catalogHandlerUtils;
     this.storageAccessConfigProvider = storageAccessConfigProvider;
     this.eventAttributeMap = eventAttributeMap;
+    this.uriInfo = uriInfo;
+    this.requestSigners = requestSigners;
+    this.uriTranslators = uriTranslators;
+    this.remoteSigningTokenService = remoteSigningTokenService;
   }
 
   private CatalogEntity getResolvedCatalogEntity() {
@@ -452,9 +481,9 @@ public class IcebergCatalogHandler extends CatalogHandler implements AutoCloseab
   public LoadTableResponse createTableDirectWithWriteDelegation(
       Namespace namespace,
       CreateTableRequest request,
+      EnumSet<AccessDelegationMode> delegationModes,
       Optional<String> refreshCredentialsEndpoint) {
-    return createTableDirect(
-        namespace, request, EnumSet.of(VENDED_CREDENTIALS), refreshCredentialsEndpoint);
+    return createTableDirect(namespace, request, delegationModes, refreshCredentialsEndpoint);
   }
 
   public void authorizeCreateTableDirect(
@@ -475,7 +504,7 @@ public class IcebergCatalogHandler extends CatalogHandler implements AutoCloseab
     if (catalog.isStaticFacade()) {
       throw new BadRequestException("Cannot create table on static-facade external catalogs.");
     }
-    checkAllowExternalCatalogCredentialVending(delegationModes);
+    checkAccessDelegationMode(delegationModes, TableIdentifier.of(namespace, request.name()));
   }
 
   public LoadTableResponse createTableDirect(
@@ -578,9 +607,9 @@ public class IcebergCatalogHandler extends CatalogHandler implements AutoCloseab
   public LoadTableResponse createTableStagedWithWriteDelegation(
       Namespace namespace,
       CreateTableRequest request,
+      EnumSet<AccessDelegationMode> delegationModes,
       Optional<String> refreshCredentialsEndpoint) {
-    return createTableStaged(
-        namespace, request, EnumSet.of(VENDED_CREDENTIALS), refreshCredentialsEndpoint);
+    return createTableStaged(namespace, request, delegationModes, refreshCredentialsEndpoint);
   }
 
   private void authorizeCreateTableStaged(
@@ -601,7 +630,20 @@ public class IcebergCatalogHandler extends CatalogHandler implements AutoCloseab
     if (catalog.isStaticFacade()) {
       throw new BadRequestException("Cannot create table on static-facade external catalogs.");
     }
-    checkAllowExternalCatalogCredentialVending(delegationModes);
+    checkAccessDelegationMode(delegationModes, TableIdentifier.of(namespace, request.name()));
+  }
+
+  private void checkAccessDelegationMode(
+      EnumSet<AccessDelegationMode> delegationModes, TableIdentifier ident) {
+    AccessDelegationMode delegationMode = selectAccessDelegationMode(delegationModes);
+    switch (delegationMode) {
+      case VENDED_CREDENTIALS -> checkAllowExternalCatalogCredentialVending();
+      case REMOTE_SIGNING -> {
+        throwIfRemoteSigningNotEnabled(callContext.getRealmConfig(), getResolvedCatalogEntity());
+        authorizeRemoteSigning(ident);
+      }
+      case UNKNOWN -> {}
+    }
   }
 
   public LoadTableResponse createTableStaged(
@@ -714,9 +756,10 @@ public class IcebergCatalogHandler extends CatalogHandler implements AutoCloseab
   public LoadTableResponse loadTableWithAccessDelegation(
       TableIdentifier tableIdentifier,
       String snapshots,
+      EnumSet<AccessDelegationMode> delegationModes,
       Optional<String> refreshCredentialsEndpoint) {
     return loadTableWithAccessDelegationIfStale(
-            tableIdentifier, null, snapshots, refreshCredentialsEndpoint)
+            tableIdentifier, null, snapshots, delegationModes, refreshCredentialsEndpoint)
         .get();
   }
 
@@ -734,13 +777,10 @@ public class IcebergCatalogHandler extends CatalogHandler implements AutoCloseab
       TableIdentifier tableIdentifier,
       IfNoneMatch ifNoneMatch,
       String snapshots,
+      EnumSet<AccessDelegationMode> delegationModes,
       Optional<String> refreshCredentialsEndpoint) {
     return loadTable(
-        tableIdentifier,
-        snapshots,
-        ifNoneMatch,
-        EnumSet.of(VENDED_CREDENTIALS),
-        refreshCredentialsEndpoint);
+        tableIdentifier, snapshots, ifNoneMatch, delegationModes, refreshCredentialsEndpoint);
   }
 
   private Set<PolarisStorageActions> authorizeLoadTable(
@@ -776,8 +816,7 @@ public class IcebergCatalogHandler extends CatalogHandler implements AutoCloseab
           read, PolarisEntitySubType.ICEBERG_TABLE, tableIdentifier);
     }
 
-    checkAllowExternalCatalogCredentialVending(delegationModes);
-
+    checkAccessDelegationMode(delegationModes, tableIdentifier);
     return actionsRequested;
   }
 
@@ -851,46 +890,163 @@ public class IcebergCatalogHandler extends CatalogHandler implements AutoCloseab
       return responseBuilder;
     }
 
-    if (baseCatalog instanceof IcebergCatalog
-        || realmConfig.getConfig(
-            ALLOW_FEDERATED_CATALOGS_CREDENTIAL_VENDING, getResolvedCatalogEntity())) {
+    AccessDelegationMode delegationMode = selectAccessDelegationMode(delegationModes);
 
-      Set<String> tableLocations = StorageUtil.getLocationsUsedByTable(tableMetadata);
+    if (delegationMode == REMOTE_SIGNING) {
 
-      // For non polaris' catalog, validate that table locations are within allowed locations
-      if (!(baseCatalog instanceof IcebergCatalog)) {
-        validateRemoteTableLocations(tableIdentifier, tableLocations, resolvedStoragePath);
-      }
+      StorageType storageType = StorageType.forLocation(tableMetadata.location());
+      checkRemoteSigningStorageType(storageType);
 
-      StorageAccessConfig storageAccessConfig =
-          storageAccessConfigProvider.getStorageAccessConfig(
-              tableIdentifier,
-              tableLocations,
-              actions,
-              refreshCredentialsEndpoint,
-              resolvedStoragePath);
-      Map<String, String> credentialConfig = storageAccessConfig.credentials();
-      if (delegationModes.contains(VENDED_CREDENTIALS)) {
-        if (!credentialConfig.isEmpty()) {
-          responseBuilder.addAllConfig(credentialConfig);
-          responseBuilder.addCredential(
-              ImmutableCredential.builder()
-                  .prefix(tableMetadata.location())
-                  .config(credentialConfig)
-                  .build());
-        } else {
-          Boolean skipCredIndirection =
-              realmConfig.getConfig(FeatureConfiguration.SKIP_CREDENTIAL_SUBSCOPING_INDIRECTION);
-          Preconditions.checkArgument(
-              !storageAccessConfig.supportsCredentialVending() || skipCredIndirection,
-              "Credential vending was requested for table %s, but no credentials are available",
-              tableIdentifier);
+      Set<String> allowedLocations = StorageUtil.getLocationsUsedByTable(tableMetadata);
+
+      RemoteSigningToken token =
+          RemoteSigningToken.builder()
+              .principalName(polarisPrincipal.getName())
+              .catalogName(catalogName)
+              .tableIdentifier(tableIdentifier)
+              .allowedLocations(allowedLocations)
+              .readWrite(remoteSigningReadWrite)
+              .build();
+
+      String signerToken = remoteSigningTokenService.encrypt(token);
+
+      // Signer URI: root of the Iceberg REST catalog API
+      URI signerUri = uriInfo.getBaseUri().resolve("api/catalog/");
+
+      // Signer endpoint: relative to the signer URI (includes the prefix)
+      String prefix = prefixParser.catalogNameToPrefix(catalogName);
+      String signerEndpoint =
+          ResourcePaths.forCatalogProperties(Map.of("prefix", prefix))
+              .remoteSign(tableIdentifier, storageType.name());
+
+      StorageAccessConfig accessConfig =
+          storageAccessConfigProvider.getStorageAccessConfigForRemoteSigning(
+              tableIdentifier, resolvedStoragePath, signerUri, signerEndpoint, signerToken);
+
+      responseBuilder.addAllConfig(accessConfig.extraProperties());
+
+    } else {
+
+      if (baseCatalog instanceof IcebergCatalog
+          || realmConfig.getConfig(
+              ALLOW_FEDERATED_CATALOGS_CREDENTIAL_VENDING, getResolvedCatalogEntity())) {
+
+        Set<String> tableLocations = StorageUtil.getLocationsUsedByTable(tableMetadata);
+
+        // For non polaris' catalog, validate that table locations are within allowed locations
+        if (!(baseCatalog instanceof IcebergCatalog)) {
+          validateRemoteTableLocations(tableIdentifier, tableLocations, resolvedStoragePath);
         }
+
+        StorageAccessConfig storageAccessConfig =
+            storageAccessConfigProvider.getStorageAccessConfigForCredentialsVending(
+                tableIdentifier,
+                tableLocations,
+                actions,
+                refreshCredentialsEndpoint,
+                resolvedStoragePath);
+        Map<String, String> credentialConfig = storageAccessConfig.credentials();
+
+        // FIXME it would be cleaner to move this into the accessConfigProvider
+        // or create another method getAccessConfigNoDelegation()
+        if (delegationModes.contains(VENDED_CREDENTIALS)) {
+          if (!credentialConfig.isEmpty()) {
+            responseBuilder.addAllConfig(credentialConfig);
+            responseBuilder.addCredential(
+                ImmutableCredential.builder()
+                    .prefix(tableMetadata.location())
+                    .config(credentialConfig)
+                    .build());
+          } else {
+            Boolean skipCredIndirection =
+                realmConfig.getConfig(FeatureConfiguration.SKIP_CREDENTIAL_SUBSCOPING_INDIRECTION);
+            Preconditions.checkArgument(
+                !storageAccessConfig.supportsCredentialVending() || skipCredIndirection,
+                "Credential vending was requested for table %s, but no credentials are available",
+                tableIdentifier);
+          }
+        }
+        responseBuilder.addAllConfig(storageAccessConfig.extraProperties());
       }
-      responseBuilder.addAllConfig(storageAccessConfig.extraProperties());
     }
 
     return responseBuilder;
+  }
+
+  private void authorizeRemoteSigning(TableIdentifier identifier) {
+
+    // This method expects a prior authorization check to have been already performed on
+    // the target. That's why we don't re-resolve the path here.
+    PolarisResolvedPathWrapper target =
+        resolutionManifest.getResolvedPath(
+            identifier, PolarisEntityType.TABLE_LIKE, PolarisEntitySubType.ICEBERG_TABLE, true);
+
+    // If the table doesn't exist, it's a create operation and
+    // remote signing authz should be performed at namespace level
+    if (target == null) {
+      Namespace namespace = identifier.namespace();
+      target = resolutionManifest.getResolvedPath(namespace, true);
+    }
+
+    authorizer.authorizeOrThrow(
+        polarisPrincipal,
+        resolutionManifest.getAllActivatedCatalogRoleAndPrincipalRoles(),
+        PolarisAuthorizableOperation.REMOTE_SIGN,
+        target,
+        null /* secondary */);
+
+    // Check whether the principal is allowed to write data w/ remote signing
+    try {
+      authorizer.authorizeOrThrow(
+          polarisPrincipal,
+          resolutionManifest.getAllActivatedCatalogRoleAndPrincipalRoles(),
+          PolarisAuthorizableOperation.LOAD_TABLE_WITH_WRITE_DELEGATION,
+          target,
+          null /* secondary */);
+      remoteSigningReadWrite = true;
+    } catch (Exception e) {
+      remoteSigningReadWrite = false;
+    }
+  }
+
+  /**
+   * Selects the most appropriate access delegation mode from the set of modes requested by the
+   * client.
+   *
+   * <p>See <a
+   * href="https://github.com/apache/iceberg/blob/main/open-api/rest-catalog-open-api.yaml#L1858-L1859">Iceberg
+   * REST Catalog spec</a>.
+   */
+  private AccessDelegationMode selectAccessDelegationMode(
+      EnumSet<AccessDelegationMode> delegationModes) {
+
+    if (delegationModes.isEmpty()) {
+      return UNKNOWN;
+    }
+
+    if (delegationModes.size() == 1) {
+      // No need to validate the mode here, it will be validated later.
+      return delegationModes.iterator().next();
+    }
+
+    if (delegationModes.contains(VENDED_CREDENTIALS) && delegationModes.contains(REMOTE_SIGNING)) {
+
+      boolean skipCredIndirection =
+          realmConfig.getConfig(FeatureConfiguration.SKIP_CREDENTIAL_SUBSCOPING_INDIRECTION);
+
+      boolean credentialSubscopingAllowed =
+          baseCatalog instanceof IcebergCatalog
+              || realmConfig.getConfig(
+                  ALLOW_FEDERATED_CATALOGS_CREDENTIAL_VENDING, getResolvedCatalogEntity());
+
+      // If both modes are supported, prefer VENDED_CREDENTIALS,
+      // but only if credential subscoping is allowed for this catalog
+      return !skipCredIndirection && credentialSubscopingAllowed
+          ? VENDED_CREDENTIALS
+          : REMOTE_SIGNING;
+    }
+
+    throw new IllegalArgumentException("Unsupported access delegation modes: " + delegationModes);
   }
 
   private void validateRemoteTableLocations(
@@ -1303,24 +1459,18 @@ public class IcebergCatalogHandler extends CatalogHandler implements AutoCloseab
     }
   }
 
-  private void checkAllowExternalCatalogCredentialVending(
-      EnumSet<AccessDelegationMode> delegationModes) {
-
-    if (delegationModes.isEmpty()) {
-      return;
-    }
+  private void checkAllowExternalCatalogCredentialVending() {
     CatalogEntity catalogEntity = getResolvedCatalogEntity();
 
     LOGGER.info("Catalog type: {}", catalogEntity.getCatalogType());
-    LOGGER.info(
-        "allow external catalog credential vending: {}",
+    Boolean allowCredentialVending =
         realmConfig.getConfig(
-            FeatureConfiguration.ALLOW_EXTERNAL_CATALOG_CREDENTIAL_VENDING, catalogEntity));
-    if (catalogEntity
+            FeatureConfiguration.ALLOW_EXTERNAL_CATALOG_CREDENTIAL_VENDING, catalogEntity);
+    LOGGER.info("allow external catalog credential vending: {}", allowCredentialVending);
+    if (!allowCredentialVending
+        && catalogEntity
             .getCatalogType()
-            .equals(org.apache.polaris.core.admin.model.Catalog.TypeEnum.EXTERNAL)
-        && !realmConfig.getConfig(
-            FeatureConfiguration.ALLOW_EXTERNAL_CATALOG_CREDENTIAL_VENDING, catalogEntity)) {
+            .equals(org.apache.polaris.core.admin.model.Catalog.TypeEnum.EXTERNAL)) {
       throw new ForbiddenException(
           "Access Delegation is not enabled for this catalog. Please consult applicable "
               + "documentation for the catalog config property '%s' to enable this feature",
@@ -1354,7 +1504,7 @@ public class IcebergCatalogHandler extends CatalogHandler implements AutoCloseab
     Map<String, String> properties =
         PolarisEntity.of(resolvedReferenceCatalog.getEntity()).getPropertiesAsMap();
 
-    String prefix = prefixParser.catalogNameToPrefix(callContext.getRealmContext(), catalogName);
+    String prefix = prefixParser.catalogNameToPrefix(catalogName);
     return ConfigResponse.builder()
         .withDefaults(properties) // catalog properties are defaults
         .withOverrides(ImmutableMap.of("prefix", prefix))
@@ -1366,5 +1516,119 @@ public class IcebergCatalogHandler extends CatalogHandler implements AutoCloseab
                 .addAll(PolarisEndpoints.getSupportedPolicyEndpoints(realmConfig))
                 .build())
         .build();
+  }
+
+  public RemoteSignResponse signRequest(
+      RemoteSignRequest signRequest, TableIdentifier tableIdentifier) {
+
+    Map<String, String> properties = signRequest.properties();
+    if (properties == null) {
+      throw new BadRequestException("Missing remote signing properties");
+    }
+
+    String signedToken = properties.get(RemoteSigningProperty.TOKEN.shortName());
+    if (signedToken == null) {
+      throw new BadRequestException("Missing remote signing token");
+    }
+
+    RemoteSigningToken token;
+    try {
+      token = remoteSigningTokenService.decrypt(signedToken);
+    } catch (Exception e) {
+      LOGGER.error("Failed to decrypt remote signing token", e);
+      throw new ForbiddenException("Invalid or expired remote signing token");
+    }
+
+    if (!token.principalName().equals(polarisPrincipal.getName())) {
+      LOGGER.error(
+          "Signed token is for a different principal. Expected: {}, Actual: {}",
+          polarisPrincipal.getName(),
+          token.principalName());
+      throw new ForbiddenException("Signed token is for a different principal");
+    }
+
+    if (!token.catalogName().equals(catalogName)) {
+      LOGGER.error(
+          "Signed token is for a different catalog. Expected: {}, Actual: {}",
+          catalogName,
+          token.catalogName());
+      throw new ForbiddenException("Signed token is for a different catalog");
+    }
+
+    if (!token.tableIdentifier().equals(tableIdentifier)) {
+      LOGGER.error(
+          "Signed token is for a different table. Expected: {}, Actual: {}",
+          tableIdentifier,
+          token.tableIdentifier());
+      throw new ForbiddenException("Signed token is for a different table");
+    }
+
+    String method = signRequest.method();
+    boolean writeRequest =
+        method.equalsIgnoreCase("PUT")
+            || method.equalsIgnoreCase("POST")
+            || method.equalsIgnoreCase("DELETE")
+            || method.equalsIgnoreCase("PATCH");
+
+    if (writeRequest && !token.readWrite()) {
+      throw new ForbiddenException("Not authorized to sign write request");
+    }
+
+    String storageTypeName = properties.get(RemoteSigningProperty.STORAGE_TYPE.shortName());
+    if (storageTypeName == null) {
+      throw new BadRequestException("Missing remote signing storage type");
+    }
+    StorageType storageType;
+    try {
+      storageType = StorageType.valueOf(storageTypeName);
+    } catch (IllegalArgumentException e) {
+      throw new BadRequestException("Invalid remote signing storage type: %s", storageTypeName);
+    }
+    checkRemoteSigningStorageType(storageType);
+
+    Identifier.Literal identifier = Identifier.Literal.of(storageTypeName);
+
+    StorageUriTranslator uriTranslator = uriTranslators.select(identifier).get();
+
+    URI endpointUri =
+        Optional.ofNullable(properties.get(RemoteSigningProperty.STORAGE_ENDPOINT.shortName()))
+            .map(URI::create)
+            .orElse(null);
+
+    String targetLocation;
+    try {
+      targetLocation = uriTranslator.translate(signRequest.uri(), endpointUri);
+    } catch (Exception e) {
+      throw new ForbiddenException(e, "Invalid request URI: %s", signRequest.uri());
+    }
+
+    new LocationRestrictions(token.allowedLocations())
+        .validate(callContext.getRealmConfig(), tableIdentifier, Set.of(targetLocation));
+
+    RemoteSigner signer = requestSigners.select(identifier).get();
+    return signer.signRequest(signRequest);
+  }
+
+  private static void checkRemoteSigningStorageType(StorageType storageType) {
+    if (storageType != StorageType.S3) {
+      throw new BadRequestException(
+          "Remote signing is not supported for storage type: %s", storageType);
+    }
+  }
+
+  private static void throwIfRemoteSigningNotEnabled(
+      RealmConfig realmConfig, CatalogEntity catalogEntity) {
+    if (catalogEntity.isExternal()) {
+      throw new ForbiddenException("Remote signing is not enabled for external catalogs.");
+    }
+    boolean remoteSigningEnabled =
+        realmConfig.getConfig(FeatureConfiguration.REMOTE_SIGNING_ENABLED, catalogEntity);
+    if (!remoteSigningEnabled) {
+      throw new ForbiddenException(
+          "Remote signing is not enabled for this catalog. To enable this feature, set the Polaris configuration %s "
+              + "or the catalog configuration %s.",
+          FeatureConfiguration.REMOTE_SIGNING_ENABLED.key(),
+          FeatureConfiguration.REMOTE_SIGNING_ENABLED.catalogConfig());
+    }
   }
 }

@@ -34,9 +34,13 @@ dependencies {
   implementation(platform(libs.iceberg.bom))
   implementation("org.apache.iceberg:iceberg-api")
   implementation("org.apache.iceberg:iceberg-core")
+  implementation("org.apache.iceberg:iceberg-data")
+  implementation("org.apache.iceberg:iceberg-parquet")
 
   implementation("org.apache.iceberg:iceberg-api:${libs.versions.iceberg.get()}:tests")
   implementation("org.apache.iceberg:iceberg-core:${libs.versions.iceberg.get()}:tests")
+
+  implementation(libs.parquet.column)
 
   implementation(libs.hadoop.common) {
     exclude("org.slf4j", "slf4j-reload4j")

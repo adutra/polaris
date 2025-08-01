@@ -120,7 +120,7 @@ public class PolarisStorageIntegrationProviderImpl implements PolarisStorageInte
                   Optional<String> refreshCredentialsEndpoint,
                   @Nonnull CredentialVendingContext credentialVendingContext) {
                 // FILE storage does not support credential vending
-                return StorageAccessConfig.builder().supportsCredentialVending(false).build();
+                return StorageAccessConfig.EMPTY;
               }
 
               @Override

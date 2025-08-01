@@ -23,14 +23,12 @@ import io.quarkus.test.junit.QuarkusIntegrationTest;
 import io.quarkus.test.junit.QuarkusTestProfile;
 import io.quarkus.test.junit.TestProfile;
 import java.net.URI;
-import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.apache.iceberg.aws.s3.S3FileIOProperties;
-import org.apache.polaris.core.admin.model.AwsStorageConfigInfo;
-import org.apache.polaris.core.admin.model.StorageConfigInfo;
-import org.apache.polaris.service.it.env.RestCatalogConfig;
+import org.apache.polaris.core.storage.StorageAccessProperty;
 import org.apache.polaris.service.it.ext.PolarisIntegrationTestExtension;
-import org.apache.polaris.service.it.test.PolarisRestCatalogIntegrationBase;
+import org.apache.polaris.service.it.test.PolarisRemoteSigningS3IntegrationTestBase;
 import org.apache.polaris.test.minio.Minio;
 import org.apache.polaris.test.minio.MinioAccess;
 import org.apache.polaris.test.minio.MinioExtension;
@@ -39,24 +37,23 @@ import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.extension.ExtendWith;
 
 @QuarkusIntegrationTest
-@TestProfile(PolarisRestCatalogMinIOIT.Profile.class)
+@TestProfile(RemoteSigningS3MinIOIT.Profile.class)
 @ExtendWith(MinioExtension.class)
 @ExtendWith(PolarisIntegrationTestExtension.class)
-@RestCatalogConfig({"header.X-Iceberg-Access-Delegation", "vended-credentials"})
-public class PolarisRestCatalogMinIOIT extends PolarisRestCatalogIntegrationBase {
+public class RemoteSigningS3MinIOIT extends PolarisRemoteSigningS3IntegrationTestBase {
 
-  protected static final String BUCKET_URI_PREFIX = "/minio-test-polaris";
-  protected static final String MINIO_ACCESS_KEY = "test-ak-123-polaris";
-  protected static final String MINIO_SECRET_KEY = "test-sk-123-polaris";
+  private static final String BUCKET_URI_PREFIX = "/minio-test/";
+  private static final String MINIO_ACCESS_KEY = "test-ak-123";
+  private static final String MINIO_SECRET_KEY = "test-sk-123";
 
   public static class Profile implements QuarkusTestProfile {
 
     @Override
     public Map<String, String> getConfigOverrides() {
       return ImmutableMap.<String, String>builder()
+          .putAll(DEFAULT_REMOTE_SIGNING_CONFIG)
           .put("polaris.storage.aws.access-key", MINIO_ACCESS_KEY)
           .put("polaris.storage.aws.secret-key", MINIO_SECRET_KEY)
-          .put("polaris.features.\"SKIP_CREDENTIAL_SUBSCOPING_INDIRECTION\"", "false")
           .build();
     }
   }
@@ -80,20 +77,22 @@ public class PolarisRestCatalogMinIOIT extends PolarisRestCatalogIntegrationBase
   }
 
   @Override
-  protected ImmutableMap.Builder<String, String> clientFileIOProperties() {
-    return super.clientFileIOProperties().putAll(s3Properties);
+  protected String storageBase() {
+    return storageBase.toString();
   }
 
   @Override
-  protected StorageConfigInfo getStorageConfigInfo() {
-    AwsStorageConfigInfo.Builder storageConfig =
-        AwsStorageConfigInfo.builder()
-            .setStorageType(StorageConfigInfo.StorageTypeEnum.S3)
-            .setPathStyleAccess(true)
-            .setEndpoint(endpoint)
-            .setAllowedLocations(List.of(storageBase.toString()));
+  protected Optional<String> endpoint() {
+    return Optional.of(endpoint);
+  }
 
-    return storageConfig.build();
+  @Override
+  protected ImmutableMap.Builder<String, String> clientFileIOProperties() {
+    return super.clientFileIOProperties()
+        // Grant direct access to the MinIO bucket; this FileIO instance does not
+        // use access delegation.
+        .put(StorageAccessProperty.AWS_KEY_ID.getPropertyName(), MINIO_ACCESS_KEY)
+        .put(StorageAccessProperty.AWS_SECRET_KEY.getPropertyName(), MINIO_SECRET_KEY);
   }
 
   @Override

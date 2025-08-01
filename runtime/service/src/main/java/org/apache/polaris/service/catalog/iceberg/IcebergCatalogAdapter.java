@@ -18,6 +18,7 @@
  */
 package org.apache.polaris.service.catalog.iceberg;
 
+import static org.apache.polaris.service.catalog.AccessDelegationMode.REMOTE_SIGNING;
 import static org.apache.polaris.service.catalog.AccessDelegationMode.VENDED_CREDENTIALS;
 import static org.apache.polaris.service.catalog.validation.IcebergPropertiesValidation.validateIcebergProperties;
 
@@ -30,9 +31,11 @@ import jakarta.inject.Inject;
 import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.SecurityContext;
+import jakarta.ws.rs.core.UriInfo;
 import java.time.Clock;
 import java.util.EnumSet;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Function;
 import org.apache.iceberg.MetadataUpdate;
 import org.apache.iceberg.catalog.Namespace;
@@ -46,12 +49,14 @@ import org.apache.iceberg.rest.requests.CreateViewRequest;
 import org.apache.iceberg.rest.requests.ImmutableCreateViewRequest;
 import org.apache.iceberg.rest.requests.RegisterTableRequest;
 import org.apache.iceberg.rest.requests.RegisterViewRequest;
+import org.apache.iceberg.rest.requests.RemoteSignRequest;
 import org.apache.iceberg.rest.requests.RenameTableRequest;
 import org.apache.iceberg.rest.requests.ReportMetricsRequest;
 import org.apache.iceberg.rest.requests.UpdateNamespacePropertiesRequest;
 import org.apache.iceberg.rest.requests.UpdateTableRequest;
 import org.apache.iceberg.rest.responses.ImmutableLoadCredentialsResponse;
 import org.apache.iceberg.rest.responses.LoadTableResponse;
+import org.apache.iceberg.rest.responses.RemoteSignResponse;
 import org.apache.polaris.core.PolarisDiagnostics;
 import org.apache.polaris.core.auth.PolarisAuthorizer;
 import org.apache.polaris.core.auth.PolarisPrincipal;
@@ -76,6 +81,9 @@ import org.apache.polaris.service.events.EventAttributeMap;
 import org.apache.polaris.service.http.IcebergHttpUtil;
 import org.apache.polaris.service.http.IfNoneMatch;
 import org.apache.polaris.service.reporting.PolarisMetricsReporter;
+import org.apache.polaris.service.storage.StorageUriTranslator;
+import org.apache.polaris.service.storage.sign.RemoteSigner;
+import org.apache.polaris.service.storage.sign.RemoteSigningTokenService;
 import org.apache.polaris.service.types.CommitTableRequest;
 import org.apache.polaris.service.types.CommitViewRequest;
 import org.apache.polaris.service.types.NotificationRequest;
@@ -108,6 +116,10 @@ public class IcebergCatalogAdapter
   private final Instance<ExternalCatalogFactory> externalCatalogFactories;
   private final StorageAccessConfigProvider storageAccessConfigProvider;
   private final PolarisMetricsReporter metricsReporter;
+  private final UriInfo uriInfo;
+  private final Instance<RemoteSigner> remoteSigners;
+  private final Instance<StorageUriTranslator> uriTranslators;
+  private final RemoteSigningTokenService remoteSigningTokenService;
   private final Clock clock;
   private final EventAttributeMap eventAttributeMap;
 
@@ -128,6 +140,10 @@ public class IcebergCatalogAdapter
       @Any Instance<ExternalCatalogFactory> externalCatalogFactories,
       StorageAccessConfigProvider storageAccessConfigProvider,
       PolarisMetricsReporter metricsReporter,
+      UriInfo uriInfo,
+      @Any Instance<RemoteSigner> remoteSigners,
+      @Any Instance<StorageUriTranslator> uriTranslators,
+      RemoteSigningTokenService remoteSigningTokenService,
       Clock clock,
       EventAttributeMap eventAttributeMap) {
     this.diagnostics = diagnostics;
@@ -146,6 +162,10 @@ public class IcebergCatalogAdapter
     this.externalCatalogFactories = externalCatalogFactories;
     this.storageAccessConfigProvider = storageAccessConfigProvider;
     this.metricsReporter = metricsReporter;
+    this.uriInfo = uriInfo;
+    this.remoteSigners = remoteSigners;
+    this.uriTranslators = uriTranslators;
+    this.remoteSigningTokenService = remoteSigningTokenService;
     this.clock = clock;
     this.eventAttributeMap = eventAttributeMap;
   }
@@ -158,7 +178,7 @@ public class IcebergCatalogAdapter
       SecurityContext securityContext,
       String prefix,
       Function<IcebergCatalogHandler, Response> action) {
-    String catalogName = prefixParser.prefixToCatalogName(realmContext, prefix);
+    String catalogName = prefixParser.prefixToCatalogName(prefix);
     return withCatalogByName(securityContext, catalogName, action);
   }
 
@@ -197,7 +217,11 @@ public class IcebergCatalogAdapter
         catalogHandlerUtils,
         externalCatalogFactories,
         storageAccessConfigProvider,
-        eventAttributeMap);
+        eventAttributeMap,
+        uriInfo,
+        remoteSigners,
+        uriTranslators,
+        remoteSigningTokenService);
   }
 
   @Override
@@ -315,11 +339,14 @@ public class IcebergCatalogAdapter
         catalog -> Response.ok(catalog.updateNamespaceProperties(ns, revisedRequest)).build());
   }
 
-  private EnumSet<AccessDelegationMode> parseAccessDelegationModes(String accessDelegationMode) {
+  private static EnumSet<AccessDelegationMode> parseAccessDelegationModes(
+      String accessDelegationMode) {
     EnumSet<AccessDelegationMode> delegationModes =
         AccessDelegationMode.fromProtocolValuesList(accessDelegationMode);
     Preconditions.checkArgument(
-        delegationModes.isEmpty() || delegationModes.contains(VENDED_CREDENTIALS),
+        delegationModes.isEmpty()
+            || delegationModes.contains(VENDED_CREDENTIALS)
+            || delegationModes.contains(REMOTE_SIGNING),
         "Unsupported access delegation mode: %s",
         accessDelegationMode);
     return delegationModes;
@@ -420,9 +447,7 @@ public class IcebergCatalogAdapter
   }
 
   private static Optional<String> getRefreshCredentialsEndpoint(
-      EnumSet<AccessDelegationMode> delegationModes,
-      String prefix,
-      TableIdentifier tableIdentifier) {
+      Set<AccessDelegationMode> delegationModes, String prefix, TableIdentifier tableIdentifier) {
     return delegationModes.contains(AccessDelegationMode.VENDED_CREDENTIALS)
         ? Optional.of(new PolarisResourcePaths(prefix).credentialsPath(tableIdentifier))
         : Optional.empty();
@@ -604,6 +629,7 @@ public class IcebergCatalogAdapter
               catalog.loadTableWithAccessDelegation(
                   tableIdentifier,
                   "all",
+                  EnumSet.of(VENDED_CREDENTIALS),
                   Optional.of(new PolarisResourcePaths(prefix).credentialsPath(tableIdentifier)));
           return Response.ok(
                   ImmutableLoadCredentialsResponse.builder()
@@ -742,7 +768,7 @@ public class IcebergCatalogAdapter
       ReportMetricsRequest reportMetricsRequest,
       RealmContext realmContext,
       SecurityContext securityContext) {
-    String catalogName = prefixParser.prefixToCatalogName(realmContext, prefix);
+    String catalogName = prefixParser.prefixToCatalogName(prefix);
     Namespace ns = decodeNamespace(namespace);
     TableIdentifier tableIdentifier = TableIdentifier.of(ns, RESTUtil.decodeString(table));
 
@@ -776,5 +802,30 @@ public class IcebergCatalogAdapter
       String warehouse, RealmContext realmContext, SecurityContext securityContext) {
     return withCatalogByName(
         securityContext, warehouse, catalog -> Response.ok(catalog.getConfig()).build());
+  }
+
+  @Override
+  public Response signRequest(
+      String prefix,
+      String namespace,
+      String table,
+      String provider,
+      RemoteSignRequest signRequest,
+      RealmContext realmContext,
+      SecurityContext securityContext) {
+    Namespace ns = decodeNamespace(namespace);
+    TableIdentifier tableIdentifier = TableIdentifier.of(ns, RESTUtil.decodeString(table));
+    return withCatalog(
+        securityContext,
+        prefix,
+        catalog -> {
+          RemoteSignResponse response = catalog.signRequest(signRequest, tableIdentifier);
+          // Always disable client-side caching of signed responses.
+          // See https://github.com/apache/iceberg/issues/15166
+          return Response.status(Response.Status.OK)
+              .entity(response)
+              .header("Cache-Control", "no-cache")
+              .build();
+        });
   }
 }
