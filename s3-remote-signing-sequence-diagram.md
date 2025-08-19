@@ -39,10 +39,8 @@ sequenceDiagram
     participant Client
     participant PolarisServer as Polaris Server
     participant AuthService as Authentication Service
-    participant SigningService as S3 Signing Service
-    participant S3Storage as S3 Storage
 
-    Note over Client, S3Storage: 1. Initial Catalog Configuration
+    Note over Client, AuthService: 1. Initial Catalog Configuration
     Client->>+PolarisServer: GET /v1/config (with auth token)
     PolarisServer->>+AuthService: Validate authentication
     AuthService-->>-PolarisServer: Authentication validated
@@ -50,12 +48,27 @@ sequenceDiagram
     Note over PolarisServer: Check if remote signing enabled<br/>via REMOTE_SIGNING_ENABLED config
     
     PolarisServer-->>-Client: ConfigResponse with remote signing endpoint template
+```
 
-    Note over Client, S3Storage: 2. Table Operations
+```mermaid
+sequenceDiagram
+    participant Client
+    participant PolarisServer as Polaris Server
+    participant AuthService as Authentication Service
+
+    Note over Client, AuthService: 2. Table Operations
     Client->>+PolarisServer: Table operation (create/load/commit)
     PolarisServer->>+AuthService: Authorize table operation
     AuthService-->>-PolarisServer: Operation authorized
-    PolarisServer-->>-Client: Table metadata + config with remote signing properties:<br/>- aws.remote-signing.enabled=true<br/>- s3.signer.uri=.../api/<br/>- s3.signer.endpoint=s3-sign/v1/...
+    PolarisServer-->>-Client: Table metadata + config<br/>with remote signing properties:<br/>- s3.remote-signing-enabled=true<br/>- s3.signer.uri=.../api/<br/>- s3.signer.endpoint=s3-sign/v1/...
+
+```
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant SigningService as Polaris Server
+    participant S3Storage as S3 Storage
 
     Note over Client, S3Storage: 3. S3 Request Signing Flow
     Note over Client: Client needs to access S3<br/>(read/write data files)
@@ -64,8 +77,7 @@ sequenceDiagram
     
     Client->>+SigningService: POST /s3-sign/v1/{prefix}/namespaces/{ns}/tables/{table}<br/>Body: PolarisS3SignRequest<br/>- region, uri, method, headers, body
     
-    SigningService->>+AuthService: Validate client authentication
-    AuthService-->>-SigningService: Authentication validated
+    SigningService->>+SigningService: Client authentication
     
     SigningService->>SigningService: Check authorization:<br/>- SIGN_S3_READ_REQUEST (for GET/HEAD)<br/>- SIGN_S3_WRITE_REQUEST (for PUT/POST/DELETE)
     
@@ -77,23 +89,29 @@ sequenceDiagram
     
     Client->>+S3Storage: HTTP request with signed headers
     S3Storage-->>-Client: S3 response (data/success)
+```
 
-    Note over Client, S3Storage: 4. Error Scenarios
+```mermaid
+sequenceDiagram
+    participant Client
+    participant SigningService as Polaris Server
+    Note over Client, SigningService: 4. Error Scenarios
     
     alt Remote signing disabled
         Client->>+SigningService: POST signing request
+        SigningService->>+SigningService: Check remote signing enabled
         SigningService-->>-Client: 403 Forbidden<br/>"Remote signing is not enabled"
     end
     
     alt Insufficient privileges
         Client->>+SigningService: POST signing request
-        SigningService->>+AuthService: Check TABLE_REMOTE_SIGN privilege
-        AuthService-->>-SigningService: Access denied
+        SigningService->>+SigningService: Check TABLE_REMOTE_SIGN privilege
         SigningService-->>-Client: 403 Forbidden<br/>"Insufficient privileges"
     end
     
     alt External/Federated catalog
         Client->>+SigningService: POST signing request
+        SigningService->>+SigningService: Check catalog is external
         SigningService-->>-Client: 403 Forbidden<br/>"Cannot use S3 remote signing with federated catalogs"
     end
 ```
