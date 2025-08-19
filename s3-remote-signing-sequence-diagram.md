@@ -49,13 +49,13 @@ sequenceDiagram
     
     Note over PolarisServer: Check if remote signing enabled<br/>via REMOTE_SIGNING_ENABLED config
     
-    PolarisServer-->>-Client: ConfigResponse with endpoints<br/>including S3 signing endpoint<br/>+ remote signing properties:<br/>- aws.remote-signing.enabled=true<br/>- s3.signer.uri=https://polaris/api/<br/>- s3.signer.endpoint=/s3-sign/v1/{prefix}/namespaces/{ns}/tables/{table}
+    PolarisServer-->>-Client: ConfigResponse with remote signing endpoint template
 
-    Note over Client, S3Storage: 2. Table Operations (Create/Read/Write)
+    Note over Client, S3Storage: 2. Table Operations
     Client->>+PolarisServer: Table operation (create/load/commit)
     PolarisServer->>+AuthService: Authorize table operation
     AuthService-->>-PolarisServer: Operation authorized
-    PolarisServer-->>-Client: Table metadata + access config<br/>with remote signing enabled
+    PolarisServer-->>-Client: Table metadata + config with remote signing properties:<br/>- aws.remote-signing.enabled=true<br/>- s3.signer.uri=.../api/<br/>- s3.signer.endpoint=s3-sign/v1/...
 
     Note over Client, S3Storage: 3. S3 Request Signing Flow
     Note over Client: Client needs to access S3<br/>(read/write data files)
@@ -70,8 +70,6 @@ sequenceDiagram
     SigningService->>SigningService: Check authorization:<br/>- SIGN_S3_READ_REQUEST (for GET/HEAD)<br/>- SIGN_S3_WRITE_REQUEST (for PUT/POST/DELETE)
     
     SigningService->>SigningService: Validate remote signing enabled<br/>for catalog
-    
-    Note over SigningService: TODO: S3 location access checks<br/>- Verify S3 location within allowed locations<br/>- Prevent access to table metadata location
     
     SigningService->>SigningService: Sign request using AWS SigV4<br/>with server-side credentials<br/>(S3RequestSignerImpl)
     
