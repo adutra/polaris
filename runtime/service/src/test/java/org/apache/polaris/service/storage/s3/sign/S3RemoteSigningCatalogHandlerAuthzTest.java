@@ -28,7 +28,6 @@ import java.util.Set;
 import org.apache.polaris.core.auth.PolarisPrincipal;
 import org.apache.polaris.core.entity.PolarisPrivilege;
 import org.apache.polaris.service.admin.PolarisAuthzTestBase;
-import org.apache.polaris.service.context.catalog.CallContextCatalogFactory;
 import org.apache.polaris.service.s3.sign.model.ImmutablePolarisS3SignRequest;
 import org.apache.polaris.service.s3.sign.model.ImmutablePolarisS3SignResponse;
 import org.junit.jupiter.api.Test;
@@ -98,14 +97,10 @@ public class S3RemoteSigningCatalogHandlerAuthzTest extends PolarisAuthzTestBase
     S3RequestSigner s3signer = Mockito.mock(S3RequestSigner.class);
     Mockito.when(s3signer.signRequest(any()))
         .thenReturn(ImmutablePolarisS3SignResponse.builder().uri(URI.create("irrelevant")).build());
-    CallContextCatalogFactory callContextCatalogFactory =
-        Mockito.mock(CallContextCatalogFactory.class);
-    Mockito.when(callContextCatalogFactory.createCallContextCatalog(any())).thenReturn(baseCatalog);
     return new S3RemoteSigningCatalogHandler(
         diagServices,
         callContext,
         resolutionManifestFactory,
-        callContextCatalogFactory,
         principal,
         CATALOG_NAME,
         polarisAuthorizer,
