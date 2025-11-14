@@ -22,7 +22,9 @@ package org.apache.polaris.service.storage.s3.sign;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.net.URI;
+import java.util.regex.Pattern;
 import org.apache.iceberg.aws.s3.signer.S3SignRequest;
+import org.apache.iceberg.exceptions.ValidationException;
 import org.apache.polaris.service.s3.sign.model.ImmutablePolarisS3SignResponse;
 import org.apache.polaris.service.s3.sign.model.PolarisS3SignResponse;
 import org.apache.polaris.service.storage.StorageConfiguration;
@@ -39,6 +41,9 @@ import software.amazon.awssdk.services.s3.S3Client;
 
 @ApplicationScoped
 class S3RequestSignerImpl implements S3RequestSigner {
+  private static final String S3_SCHEME = "s3";
+  private static final String AWS_VIRTUAL_HOSTED_STYLE_PATTERN = ".*\\.s3[.-].*amazonaws\\.com";
+  private static final String AWS_PATH_STYLE_PATTERN = "s3[.-].*amazonaws\\.com";
 
   private final AwsV4HttpSigner signer = AwsV4HttpSigner.create();
 
@@ -85,5 +90,32 @@ class S3RequestSignerImpl implements S3RequestSigner {
         .uri(signedRequest.getUri())
         .headers(signedRequest.headers())
         .build();
+  }
+
+  @SuppressWarnings("FormatStringAnnotation")
+  @Override
+  public String normalizeLocationUri(URI uri) {
+    if (uri.getScheme().equals(S3_SCHEME)) {
+      return uri.toString();
+    }
+
+    String host = uri.getHost();
+    String path = uri.getPath().replaceFirst("^/", "");
+
+    // Virtual-hosted style (bucket in hostname)
+    if (Pattern.matches(AWS_VIRTUAL_HOSTED_STYLE_PATTERN, host)) {
+      String bucket = host.split("\\.")[0];
+      return "s3://" + bucket + "/" + path;
+    }
+
+    // Path style (bucket in path)
+    if (Pattern.matches(AWS_PATH_STYLE_PATTERN, host)) {
+      String[] parts = path.split("/", 2);
+      String bucket = parts[0];
+      String key = parts.length > 1 ? parts[1] : "";
+      return "s3://" + bucket + "/" + key;
+    }
+
+    throw new ValidationException("Invalid S3 URL: " + uri);
   }
 }

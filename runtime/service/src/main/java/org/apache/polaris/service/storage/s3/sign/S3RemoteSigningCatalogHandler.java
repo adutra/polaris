@@ -21,7 +21,9 @@ package org.apache.polaris.service.storage.s3.sign;
 import java.util.EnumSet;
 import java.util.Set;
 import org.apache.iceberg.catalog.TableIdentifier;
+import org.apache.iceberg.exceptions.BadRequestException;
 import org.apache.iceberg.exceptions.ForbiddenException;
+import org.apache.iceberg.exceptions.ValidationException;
 import org.apache.polaris.core.PolarisDiagnostics;
 import org.apache.polaris.core.auth.PolarisAuthorizableOperation;
 import org.apache.polaris.core.auth.PolarisAuthorizer;
@@ -99,7 +101,7 @@ public class S3RemoteSigningCatalogHandler extends CatalogHandler implements Aut
     // also, materializing the catalog here could hurt performance.
     throwIfRemoteSigningNotEnabled(callContext.getRealmConfig(), catalogEntity);
 
-    validateLocations(s3SignRequest, tableIdentifier);
+    throwIfRequestLocationIsInvalid(s3SignRequest, tableIdentifier);
 
     PolarisS3SignResponse s3SignResponse = s3RequestSigner.signRequest(s3SignRequest);
     LOGGER.debug("S3 signing response: {}", s3SignResponse);
@@ -107,7 +109,7 @@ public class S3RemoteSigningCatalogHandler extends CatalogHandler implements Aut
     return s3SignResponse;
   }
 
-  private void validateLocations(
+  private void throwIfRequestLocationIsInvalid(
       PolarisS3SignRequest s3SignRequest, TableIdentifier tableIdentifier) {
 
     // Will point to the table entity if it exists, otherwise the namespace entity.
@@ -131,9 +133,13 @@ public class S3RemoteSigningCatalogHandler extends CatalogHandler implements Aut
     }
   }
 
+  @SuppressWarnings("FormatStringAnnotation")
   private Set<String> getTargetLocations(PolarisS3SignRequest s3SignRequest) {
-    // TODO M2: map http URI to s3 URI
-    return Set.of();
+    try {
+      return Set.of(s3RequestSigner.normalizeLocationUri(s3SignRequest.uri()));
+    } catch (ValidationException e) {
+      throw new BadRequestException("Invalid request URI: " + s3SignRequest.uri(), e);
+    }
   }
 
   public static void throwIfRemoteSigningNotEnabled(
