@@ -92,7 +92,6 @@ class S3RequestSignerImpl implements S3RequestSigner {
         .build();
   }
 
-  @SuppressWarnings("FormatStringAnnotation")
   @Override
   public String normalizeLocationUri(URI uri) {
     if (uri.getScheme().equals(S3_SCHEME)) {
@@ -116,6 +115,6 @@ class S3RequestSignerImpl implements S3RequestSigner {
       return "s3://" + bucket + "/" + key;
     }
 
-    throw new ValidationException("Invalid S3 URL: " + uri);
+    throw new ValidationException("Invalid S3 URL: %s", uri.toString());
   }
 }

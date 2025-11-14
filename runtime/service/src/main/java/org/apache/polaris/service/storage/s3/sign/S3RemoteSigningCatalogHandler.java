@@ -133,12 +133,11 @@ public class S3RemoteSigningCatalogHandler extends CatalogHandler implements Aut
     }
   }
 
-  @SuppressWarnings("FormatStringAnnotation")
   private Set<String> getTargetLocations(PolarisS3SignRequest s3SignRequest) {
     try {
       return Set.of(s3RequestSigner.normalizeLocationUri(s3SignRequest.uri()));
     } catch (ValidationException e) {
-      throw new BadRequestException("Invalid request URI: " + s3SignRequest.uri(), e);
+      throw new BadRequestException(e, "Invalid request URI: %s", s3SignRequest.uri());
     }
   }
 
