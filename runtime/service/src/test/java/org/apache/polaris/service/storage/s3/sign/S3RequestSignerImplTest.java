@@ -232,33 +232,97 @@ class S3RequestSignerImplTest {
 
   static Stream<Arguments> normalizeLocationUriTestCases() {
     return Stream.of(
-        // S3 scheme URIs - should return as-is
         Arguments.of("s3://my-bucket/path/to/file", "s3://my-bucket/path/to/file"),
         Arguments.of("s3://my-bucket", "s3://my-bucket"),
-        // Virtual-hosted style URLs
         Arguments.of(
-            "https://my-bucket.s3.us-west-2.amazonaws.com/path/to/file",
+            "https://my-bucket.s3.region-name-1.amazonaws.com/path/to/file",
             "s3://my-bucket/path/to/file"),
         Arguments.of(
-            "https://my-bucket.s3-us-west-2.amazonaws.com/path/to/file",
+            "https://my-bucket.s3-region-name-1.amazonaws.com/path/to/file",
             "s3://my-bucket/path/to/file"),
-        Arguments.of("https://my-bucket.s3.us-west-2.amazonaws.com/", "s3://my-bucket/"),
-        // Path style URLs
+        Arguments.of("https://my-bucket.s3.region-name-1.amazonaws.com/", "s3://my-bucket/"),
         Arguments.of(
-            "https://s3.us-west-2.amazonaws.com/my-bucket/path/to/file",
+            "https://s3.region-name-1.amazonaws.com/my-bucket/path/to/file",
             "s3://my-bucket/path/to/file"),
         Arguments.of(
-            "https://s3-us-west-2.amazonaws.com/my-bucket/path/to/file",
+            "https://s3-region-name-1.amazonaws.com/my-bucket/path/to/file",
             "s3://my-bucket/path/to/file"),
-        Arguments.of("https://s3.us-west-2.amazonaws.com/my-bucket", "s3://my-bucket/"),
-        Arguments.of("https://s3.us-west-2.amazonaws.com/my-bucket/", "s3://my-bucket/"),
-        // Complex paths
+        Arguments.of("https://s3.region-name-1.amazonaws.com/my-bucket", "s3://my-bucket/"),
         Arguments.of(
-            "https://my-bucket.s3.us-east-1.amazonaws.com/data/year=2024/month=01/file.parquet",
+            "https://my-bucket.s3.region-name-1.amazonaws.com.cn/path/to/file",
+            "s3://my-bucket/path/to/file"),
+        Arguments.of(
+            "https://my-bucket.s3-region-name-1.amazonaws.com.cn/path/to/file",
+            "s3://my-bucket/path/to/file"),
+        Arguments.of(
+            "https://s3.region-name-1.amazonaws.com.cn/my-bucket/path/to/file",
+            "s3://my-bucket/path/to/file"),
+        Arguments.of(
+            "https://my-bucket.s3.dualstack.region-name-1.amazonaws.com.cn/path/to/file",
+            "s3://my-bucket/path/to/file"),
+        Arguments.of(
+            "https://s3.dualstack.region-name-1.amazonaws.com.cn/my-bucket/path/to/file",
+            "s3://my-bucket/path/to/file"),
+        Arguments.of(
+            "https://my-bucket.s3-website.region-name-1.amazonaws.com.cn/index.html",
+            "s3://my-bucket/index.html"),
+        Arguments.of(
+            "https://my-access-point.s3-accesspoint.region-name-1.amazonaws.com.cn/path/to/file",
+            "s3://my-access-point/path/to/file"),
+        Arguments.of(
+            "https://my-access-point.s3-accesspoint.dualstack.region-name-1.amazonaws.com.cn/path/to/file",
+            "s3://my-access-point/path/to/file"),
+        Arguments.of(
+            "https://my-lambda.s3-object-lambda.region-name-1.amazonaws.com.cn/path/to/file",
+            "s3://my-lambda/path/to/file"),
+        Arguments.of(
+            "https://my-bucket.s3.region-name-1.amazonaws.com/path/to/file",
+            "s3://my-bucket/path/to/file"),
+        Arguments.of(
+            "https://s3.region-name-1.amazonaws.com/my-bucket/path/to/file",
+            "s3://my-bucket/path/to/file"),
+        Arguments.of(
+            "https://my-bucket.s3-fips.region-name-1.amazonaws.com/path/to/file",
+            "s3://my-bucket/path/to/file"),
+        Arguments.of(
+            "https://s3-fips.region-name-1.amazonaws.com/my-bucket/path/to/file",
+            "s3://my-bucket/path/to/file"),
+        Arguments.of(
+            "https://my-bucket.s3.dualstack.region-name-1.amazonaws.com/path/to/file",
+            "s3://my-bucket/path/to/file"),
+        Arguments.of(
+            "https://s3.dualstack.region-name-1.amazonaws.com/my-bucket/path/to/file",
+            "s3://my-bucket/path/to/file"),
+        Arguments.of(
+            "https://my-bucket.s3-fips.dualstack.region-name-1.amazonaws.com/path/to/file",
+            "s3://my-bucket/path/to/file"),
+        Arguments.of(
+            "https://s3-fips.dualstack.region-name-1.amazonaws.com/my-bucket/path/to/file",
+            "s3://my-bucket/path/to/file"),
+        Arguments.of(
+            "https://my-bucket.s3.region-name-1.amazonaws.com/data/year=2024/month=01/file.parquet",
             "s3://my-bucket/data/year=2024/month=01/file.parquet"),
         Arguments.of(
-            "https://s3.eu-west-1.amazonaws.com/my-bucket/data/year=2024/month=01/file.parquet",
-            "s3://my-bucket/data/year=2024/month=01/file.parquet"));
+            "https://s3.region-name-1.amazonaws.com/my-bucket/data/year=2024/month=01/file.parquet",
+            "s3://my-bucket/data/year=2024/month=01/file.parquet"),
+        Arguments.of(
+            "https://my-access-point.s3-accesspoint.region-name-1.amazonaws.com/path/to/file",
+            "s3://my-access-point/path/to/file"),
+        Arguments.of(
+            "https://my-access-point.s3-accesspoint-fips.region-name-1.amazonaws.com/path/to/file",
+            "s3://my-access-point/path/to/file"),
+        Arguments.of(
+            "https://my-access-point.s3-accesspoint.dualstack.region-name-1.amazonaws.com/path/to/file",
+            "s3://my-access-point/path/to/file"),
+        Arguments.of(
+            "https://my-access-point.s3-accesspoint-fips.dualstack.region-name-1.amazonaws.com/path/to/file",
+            "s3://my-access-point/path/to/file"),
+        Arguments.of(
+            "https://my-table.s3tables.region-name-1.amazonaws.com/path/to/file",
+            "s3://my-table/path/to/file"),
+        Arguments.of(
+            "https://s3tables.region-name-1.amazonaws.com/my-table/path/to/file",
+            "s3://my-table/path/to/file"));
   }
 
   @ParameterizedTest

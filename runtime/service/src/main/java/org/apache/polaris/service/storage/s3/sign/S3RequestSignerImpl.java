@@ -42,8 +42,10 @@ import software.amazon.awssdk.services.s3.S3Client;
 @ApplicationScoped
 class S3RequestSignerImpl implements S3RequestSigner {
   private static final String S3_SCHEME = "s3";
-  private static final String AWS_VIRTUAL_HOSTED_STYLE_PATTERN = ".*\\.s3[.-].*amazonaws\\.com";
-  private static final String AWS_PATH_STYLE_PATTERN = "s3[.-].*amazonaws\\.com";
+  private static final String AWS_VIRTUAL_HOSTED_STYLE_PATTERN =
+      ".*\\.(s3|s3tables|s3-accesspoint-fips|s3-accesspoint|s3-control-fips|s3-control|s3-fips|s3-website)[.-].*\\.amazonaws\\.com(\\.cn)?";
+  private static final String AWS_PATH_STYLE_PATTERN =
+      "(s3|s3tables|s3-accesspoint-fips|s3-accesspoint|s3-control-fips|s3-control|s3-fips|s3-website)[.-].*\\.amazonaws\\.com(\\.cn)?";
 
   private final AwsV4HttpSigner signer = AwsV4HttpSigner.create();
 
