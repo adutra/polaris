@@ -20,27 +20,36 @@
 package org.apache.polaris.service.storage.s3.sign;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.when;
 
 import java.net.URI;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Stream;
 import org.apache.iceberg.aws.s3.signer.ImmutableS3SignRequest;
 import org.apache.iceberg.aws.s3.signer.S3SignRequest;
 import org.apache.iceberg.aws.s3.signer.S3SignResponse;
+import org.apache.iceberg.exceptions.ValidationException;
 import org.apache.polaris.service.storage.StorageConfiguration;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.AwsCredentials;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class S3RequestSignerImplTest {
 
   @Mock private StorageConfiguration storageConfiguration;
@@ -219,5 +228,118 @@ class S3RequestSignerImplTest {
     assertThat(authHeader).startsWith("AWS4-HMAC-SHA256 Credential=" + TEST_ACCESS_KEY);
     assertThat(authHeader).contains("SignedHeaders=");
     assertThat(authHeader).contains("Signature=");
+  }
+
+  static Stream<Arguments> normalizeLocationUriTestCases() {
+    return Stream.of(
+        Arguments.of("s3://my-bucket/path/to/file", "s3://my-bucket/path/to/file"),
+        Arguments.of("s3://my-bucket", "s3://my-bucket"),
+        Arguments.of(
+            "https://my-bucket.s3.region-name-1.amazonaws.com/path/to/file",
+            "s3://my-bucket/path/to/file"),
+        Arguments.of(
+            "https://my-bucket.s3-region-name-1.amazonaws.com/path/to/file",
+            "s3://my-bucket/path/to/file"),
+        Arguments.of("https://my-bucket.s3.region-name-1.amazonaws.com/", "s3://my-bucket/"),
+        Arguments.of(
+            "https://s3.region-name-1.amazonaws.com/my-bucket/path/to/file",
+            "s3://my-bucket/path/to/file"),
+        Arguments.of(
+            "https://s3-region-name-1.amazonaws.com/my-bucket/path/to/file",
+            "s3://my-bucket/path/to/file"),
+        Arguments.of("https://s3.region-name-1.amazonaws.com/my-bucket", "s3://my-bucket/"),
+        Arguments.of(
+            "https://my-bucket.s3.region-name-1.amazonaws.com.cn/path/to/file",
+            "s3://my-bucket/path/to/file"),
+        Arguments.of(
+            "https://my-bucket.s3-region-name-1.amazonaws.com.cn/path/to/file",
+            "s3://my-bucket/path/to/file"),
+        Arguments.of(
+            "https://s3.region-name-1.amazonaws.com.cn/my-bucket/path/to/file",
+            "s3://my-bucket/path/to/file"),
+        Arguments.of(
+            "https://my-bucket.s3.dualstack.region-name-1.amazonaws.com.cn/path/to/file",
+            "s3://my-bucket/path/to/file"),
+        Arguments.of(
+            "https://s3.dualstack.region-name-1.amazonaws.com.cn/my-bucket/path/to/file",
+            "s3://my-bucket/path/to/file"),
+        Arguments.of(
+            "https://my-bucket.s3-website.region-name-1.amazonaws.com.cn/index.html",
+            "s3://my-bucket/index.html"),
+        Arguments.of(
+            "https://my-access-point.s3-accesspoint.region-name-1.amazonaws.com.cn/path/to/file",
+            "s3://my-access-point/path/to/file"),
+        Arguments.of(
+            "https://my-access-point.s3-accesspoint.dualstack.region-name-1.amazonaws.com.cn/path/to/file",
+            "s3://my-access-point/path/to/file"),
+        Arguments.of(
+            "https://my-lambda.s3-object-lambda.region-name-1.amazonaws.com.cn/path/to/file",
+            "s3://my-lambda/path/to/file"),
+        Arguments.of(
+            "https://my-bucket.s3.region-name-1.amazonaws.com/path/to/file",
+            "s3://my-bucket/path/to/file"),
+        Arguments.of(
+            "https://s3.region-name-1.amazonaws.com/my-bucket/path/to/file",
+            "s3://my-bucket/path/to/file"),
+        Arguments.of(
+            "https://my-bucket.s3-fips.region-name-1.amazonaws.com/path/to/file",
+            "s3://my-bucket/path/to/file"),
+        Arguments.of(
+            "https://s3-fips.region-name-1.amazonaws.com/my-bucket/path/to/file",
+            "s3://my-bucket/path/to/file"),
+        Arguments.of(
+            "https://my-bucket.s3.dualstack.region-name-1.amazonaws.com/path/to/file",
+            "s3://my-bucket/path/to/file"),
+        Arguments.of(
+            "https://s3.dualstack.region-name-1.amazonaws.com/my-bucket/path/to/file",
+            "s3://my-bucket/path/to/file"),
+        Arguments.of(
+            "https://my-bucket.s3-fips.dualstack.region-name-1.amazonaws.com/path/to/file",
+            "s3://my-bucket/path/to/file"),
+        Arguments.of(
+            "https://s3-fips.dualstack.region-name-1.amazonaws.com/my-bucket/path/to/file",
+            "s3://my-bucket/path/to/file"),
+        Arguments.of(
+            "https://my-bucket.s3.region-name-1.amazonaws.com/data/year=2024/month=01/file.parquet",
+            "s3://my-bucket/data/year=2024/month=01/file.parquet"),
+        Arguments.of(
+            "https://s3.region-name-1.amazonaws.com/my-bucket/data/year=2024/month=01/file.parquet",
+            "s3://my-bucket/data/year=2024/month=01/file.parquet"),
+        Arguments.of(
+            "https://my-access-point.s3-accesspoint.region-name-1.amazonaws.com/path/to/file",
+            "s3://my-access-point/path/to/file"),
+        Arguments.of(
+            "https://my-access-point.s3-accesspoint-fips.region-name-1.amazonaws.com/path/to/file",
+            "s3://my-access-point/path/to/file"),
+        Arguments.of(
+            "https://my-access-point.s3-accesspoint.dualstack.region-name-1.amazonaws.com/path/to/file",
+            "s3://my-access-point/path/to/file"),
+        Arguments.of(
+            "https://my-access-point.s3-accesspoint-fips.dualstack.region-name-1.amazonaws.com/path/to/file",
+            "s3://my-access-point/path/to/file"),
+        Arguments.of(
+            "https://my-table.s3tables.region-name-1.amazonaws.com/path/to/file",
+            "s3://my-table/path/to/file"),
+        Arguments.of(
+            "https://s3tables.region-name-1.amazonaws.com/my-table/path/to/file",
+            "s3://my-table/path/to/file"));
+  }
+
+  @ParameterizedTest
+  @MethodSource("normalizeLocationUriTestCases")
+  void testNormalizeLocationUri(String inputUri, String expectedNormalized) {
+    String normalized = s3RequestSigner.normalizeLocationUri(URI.create(inputUri));
+    assertThat(normalized).isEqualTo(expectedNormalized);
+  }
+
+  @Test
+  void testNormalizeLocationUri_InvalidUrl() {
+    // Given
+    URI invalidUri = URI.create("https://example.com/some/path");
+
+    // When/Then
+    assertThatThrownBy(() -> s3RequestSigner.normalizeLocationUri(invalidUri))
+        .isInstanceOf(ValidationException.class)
+        .hasMessageContaining("Invalid S3 URL");
   }
 }

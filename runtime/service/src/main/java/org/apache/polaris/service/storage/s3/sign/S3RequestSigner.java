@@ -19,6 +19,7 @@
 
 package org.apache.polaris.service.storage.s3.sign;
 
+import java.net.URI;
 import org.apache.iceberg.aws.s3.signer.S3SignRequest;
 import org.apache.polaris.service.s3.sign.model.PolarisS3SignResponse;
 
@@ -27,4 +28,7 @@ public interface S3RequestSigner {
 
   /** Signs an S3 request. */
   PolarisS3SignResponse signRequest(S3SignRequest signingRequest);
+
+  /** Normalizes the URI for S3 requests. */
+  String normalizeLocationUri(URI uri);
 }

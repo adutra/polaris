@@ -24,7 +24,9 @@ import org.apache.iceberg.BaseTable;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.catalog.Catalog;
 import org.apache.iceberg.catalog.TableIdentifier;
+import org.apache.iceberg.exceptions.BadRequestException;
 import org.apache.iceberg.exceptions.ForbiddenException;
+import org.apache.iceberg.exceptions.ValidationException;
 import org.apache.polaris.core.PolarisDiagnostics;
 import org.apache.polaris.core.auth.PolarisAuthorizableOperation;
 import org.apache.polaris.core.auth.PolarisAuthorizer;
@@ -140,8 +142,11 @@ public class S3RemoteSigningCatalogHandler extends CatalogHandler implements Aut
   }
 
   private Set<String> getTargetLocations(PolarisS3SignRequest s3SignRequest) {
-    // TODO M2: map http URI to s3 URI
-    return Set.of();
+    try {
+      return Set.of(s3RequestSigner.normalizeLocationUri(s3SignRequest.uri()));
+    } catch (ValidationException e) {
+      throw new BadRequestException(e, "Invalid request URI: %s", s3SignRequest.uri());
+    }
   }
 
   public static void throwIfRemoteSigningNotEnabled(
