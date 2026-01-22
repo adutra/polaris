@@ -118,6 +118,11 @@ dependencyResolutionManagement {
   repositoriesMode = RepositoriesMode.FAIL_ON_PROJECT_REPOS
   repositories {
     mavenCentral()
+    mavenLocal()
+    maven {
+      url = uri("https://jitpack.io")
+      content { includeModule("com.github.RoaringBitmap.RoaringBitmap", "roaringbitmap") }
+    }
     gradlePluginPortal()
   }
 }

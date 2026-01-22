@@ -17,10 +17,7 @@
  * under the License.
  */
 
-import java.util.Properties
 import kotlin.jvm.java
-import net.ltgt.gradle.errorprone.CheckSeverity
-import net.ltgt.gradle.errorprone.errorprone
 import org.gradle.api.tasks.compile.JavaCompile
 import org.gradle.api.tasks.testing.Test
 import org.gradle.kotlin.dsl.assign
@@ -38,7 +35,7 @@ plugins {
   id("polaris-spotless")
   id("polaris-reproducible")
   id("jacoco-report-aggregation")
-  id("net.ltgt.errorprone")
+  //  id("net.ltgt.errorprone")
 }
 
 apply<PublishingHelperPlugin>()
@@ -78,26 +75,27 @@ tasks.withType(JavaCompile::class.java).configureEach {
   options.compilerArgs.addAll(
     listOf("-Xlint:unchecked", "-Xlint:deprecation", "-XDaddTypeAnnotationsToSymbol=true")
   )
-  options.errorprone.disableAllWarnings = true
-  options.errorprone.disableWarningsInGeneratedCode = true
-  options.errorprone.excludedPaths =
-    ".*/${project.layout.buildDirectory.get().asFile.relativeTo(projectDir)}/generated(-openapi)?/.*"
-  val errorproneRules = rootProject.projectDir.resolve("codestyle/errorprone-rules.properties")
-  inputs.file(errorproneRules).withPathSensitivity(PathSensitivity.RELATIVE)
-  options.errorprone.checks.putAll(provider { memoizedErrorproneRules(errorproneRules) })
+  //  options.errorprone.disableAllWarnings = true
+  //  options.errorprone.disableWarningsInGeneratedCode = true
+  //  options.errorprone.excludedPaths =
+  //
+  // ".*/${project.layout.buildDirectory.get().asFile.relativeTo(projectDir)}/generated(-openapi)?/.*"
+  //  val errorproneRules = rootProject.projectDir.resolve("codestyle/errorprone-rules.properties")
+  //  inputs.file(errorproneRules).withPathSensitivity(PathSensitivity.RELATIVE)
+  //  options.errorprone.checks.putAll(provider { memoizedErrorproneRules(errorproneRules) })
 }
 
-private fun memoizedErrorproneRules(rulesFile: File): Map<String, CheckSeverity> =
-  rulesFile.reader().use {
-    val rules = Properties()
-    rules.load(it)
-    rules
-      .mapKeys { e -> (e.key as String).trim() }
-      .mapValues { e -> (e.value as String).trim() }
-      .filter { e -> e.key.isNotEmpty() && e.value.isNotEmpty() }
-      .mapValues { e -> CheckSeverity.valueOf(e.value) }
-      .toMap()
-  }
+// private fun memoizedErrorproneRules(rulesFile: File): Map<String, CheckSeverity> =
+//  rulesFile.reader().use {
+//    val rules = Properties()
+//    rules.load(it)
+//    rules
+//      .mapKeys { e -> (e.key as String).trim() }
+//      .mapValues { e -> (e.value as String).trim() }
+//      .filter { e -> e.key.isNotEmpty() && e.value.isNotEmpty() }
+//      .mapValues { e -> CheckSeverity.valueOf(e.value) }
+//      .toMap()
+//  }
 
 tasks.register("compileAll").configure {
   group = "build"
@@ -211,7 +209,7 @@ tasks.withType<Jar>().configureEach {
   }
 }
 
-dependencies { errorprone(versionCatalogs.named("libs").findLibrary("errorprone").get()) }
+// dependencies { errorprone(versionCatalogs.named("libs").findLibrary("errorprone").get()) }
 
 java {
   withJavadocJar()
