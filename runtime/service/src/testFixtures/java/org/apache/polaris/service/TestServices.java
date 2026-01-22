@@ -94,6 +94,7 @@ import org.apache.polaris.service.persistence.InMemoryPolarisMetaStoreManagerFac
 import org.apache.polaris.service.reporting.DefaultMetricsReporter;
 import org.apache.polaris.service.secrets.UnsafeInMemorySecretsManagerFactory;
 import org.apache.polaris.service.storage.PolarisStorageIntegrationProviderImpl;
+import org.apache.polaris.service.storage.sign.RemoteRequestSigner;
 import org.apache.polaris.service.task.TaskExecutor;
 import org.mockito.Mockito;
 import software.amazon.awssdk.services.sts.StsClient;
@@ -359,7 +360,8 @@ public record TestServices(
               catalogHandlerUtils,
               externalCatalogFactory,
               storageAccessConfigProvider,
-              new DefaultMetricsReporter());
+              new DefaultMetricsReporter(),
+              Mockito.mock(RemoteRequestSigner.class));
 
       // Optionally wrap with event delegator
       IcebergRestCatalogApiService finalRestCatalogService = catalogService;

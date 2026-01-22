@@ -17,15 +17,17 @@
  * under the License.
  */
 
-package org.apache.polaris.service.storage.s3.sign;
+package org.apache.polaris.service.storage.sign;
 
+import io.smallrye.common.annotation.Identifier;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.net.URI;
-import org.apache.iceberg.aws.s3.signer.S3SignRequest;
-import org.apache.polaris.service.s3.sign.model.ImmutablePolarisS3SignResponse;
-import org.apache.polaris.service.s3.sign.model.PolarisS3SignResponse;
+import org.apache.iceberg.rest.requests.RemoteSignRequest;
+import org.apache.iceberg.rest.responses.ImmutableRemoteSignResponse;
+import org.apache.iceberg.rest.responses.RemoteSignResponse;
 import org.apache.polaris.service.storage.StorageConfiguration;
+import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
 import software.amazon.awssdk.auth.credentials.AwsCredentials;
 import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
 import software.amazon.awssdk.http.ContentStreamProvider;
@@ -38,14 +40,15 @@ import software.amazon.awssdk.http.auth.spi.signer.SignedRequest;
 import software.amazon.awssdk.services.s3.S3Client;
 
 @ApplicationScoped
-class S3RequestSignerImpl implements S3RequestSigner {
+@Identifier("s3")
+public class S3RemoteRequestSigner implements RemoteRequestSigner {
 
   private final AwsV4HttpSigner signer = AwsV4HttpSigner.create();
 
   @Inject StorageConfiguration storageConfiguration;
 
   @Override
-  public PolarisS3SignResponse signRequest(S3SignRequest signingRequest) {
+  public RemoteSignResponse signRequest(@MonotonicNonNull RemoteSignRequest signingRequest) {
 
     URI uri = signingRequest.uri();
     SdkHttpMethod method = SdkHttpMethod.valueOf(signingRequest.method());
@@ -81,7 +84,7 @@ class S3RequestSignerImpl implements S3RequestSigner {
     SignedRequest signed = signer.sign(signRequest.build());
     SdkHttpRequest signedRequest = signed.request();
 
-    return ImmutablePolarisS3SignResponse.builder()
+    return ImmutableRemoteSignResponse.builder()
         .uri(signedRequest.getUri())
         .headers(signedRequest.headers())
         .build();

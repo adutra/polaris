@@ -134,7 +134,8 @@ public abstract class AbstractIcebergCatalogHandlerAuthzTest extends PolarisAuth
         reservedProperties,
         catalogHandlerUtils,
         emptyExternalCatalogFactory(),
-        storageAccessConfigProvider);
+        storageAccessConfigProvider,
+        s3RequestSigner);
   }
 
   protected void doTestInsufficientPrivileges(
@@ -275,7 +276,8 @@ public abstract class AbstractIcebergCatalogHandlerAuthzTest extends PolarisAuth
             reservedProperties,
             catalogHandlerUtils,
             emptyExternalCatalogFactory(),
-            storageAccessConfigProvider);
+            storageAccessConfigProvider,
+            s3RequestSigner);
 
     // a variety of actions are all disallowed because the principal's credentials must be rotated
     doTestInsufficientPrivileges(
@@ -314,7 +316,8 @@ public abstract class AbstractIcebergCatalogHandlerAuthzTest extends PolarisAuth
             reservedProperties,
             catalogHandlerUtils,
             emptyExternalCatalogFactory(),
-            storageAccessConfigProvider);
+            storageAccessConfigProvider,
+            s3RequestSigner);
 
     doTestSufficientPrivilegeSets(
         List.of(Set.of(PolarisPrivilege.NAMESPACE_LIST)),
@@ -1295,7 +1298,8 @@ public abstract class AbstractIcebergCatalogHandlerAuthzTest extends PolarisAuth
         reservedProperties,
         catalogHandlerUtils,
         emptyExternalCatalogFactory(),
-        storageAccessConfigProvider);
+        storageAccessConfigProvider,
+        s3RequestSigner);
   }
 
   @Test

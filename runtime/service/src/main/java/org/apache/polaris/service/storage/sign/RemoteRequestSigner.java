@@ -17,14 +17,14 @@
  * under the License.
  */
 
-package org.apache.polaris.service.storage.s3.sign;
+package org.apache.polaris.service.storage.sign;
 
-import org.apache.iceberg.aws.s3.signer.S3SignRequest;
-import org.apache.polaris.service.s3.sign.model.PolarisS3SignResponse;
+import org.apache.iceberg.rest.requests.RemoteSignRequest;
+import org.apache.iceberg.rest.responses.RemoteSignResponse;
 
-/** Interface for signing S3 requests. */
-public interface S3RequestSigner {
+/** Interface for signing requests remotely. */
+public interface RemoteRequestSigner {
 
   /** Signs an S3 request. */
-  PolarisS3SignResponse signRequest(S3SignRequest signingRequest);
+  RemoteSignResponse signRequest(RemoteSignRequest signingRequest);
 }

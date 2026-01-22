@@ -27,11 +27,13 @@ import jakarta.inject.Inject;
 import jakarta.ws.rs.core.UriInfo;
 import java.net.URI;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.iceberg.catalog.Namespace;
 import org.apache.iceberg.catalog.TableIdentifier;
+import org.apache.iceberg.rest.ResourcePaths;
 import org.apache.polaris.core.auth.PolarisPrincipal;
 import org.apache.polaris.core.config.FeatureConfiguration;
 import org.apache.polaris.core.entity.PolarisEntity;
@@ -284,8 +286,15 @@ public class StorageAccessConfigProvider {
 
     String prefix = prefixParser.catalogNameToPrefix(catalogName);
     // TODO M2 handle cases where the catalog server is behind a proxy
-    URI signerUri = uriInfo.getBaseUriBuilder().path(PolarisResourcePaths.API_PATH_SEGMENT).build();
-    String signerEndpoint = new PolarisResourcePaths(prefix).s3RemoteSigning(tableIdentifier);
+    URI signerUri =
+        uriInfo
+            .getBaseUriBuilder()
+            .path(PolarisResourcePaths.API_PATH_SEGMENT)
+            .path(PolarisResourcePaths.CATALOG_PATH_SEGMENT)
+            .build();
+    String signerEndpoint =
+        ResourcePaths.forCatalogProperties(Map.of("prefix", prefix))
+            .remoteSign(tableIdentifier, "s3");
 
     return awsCredentialsStorageIntegration.getRemoteSigningAccessConfig(signerUri, signerEndpoint);
   }

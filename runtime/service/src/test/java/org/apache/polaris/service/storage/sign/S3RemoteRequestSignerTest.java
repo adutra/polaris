@@ -17,7 +17,7 @@
  * under the License.
  */
 
-package org.apache.polaris.service.storage.s3.sign;
+package org.apache.polaris.service.storage.sign;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
@@ -26,9 +26,9 @@ import java.net.URI;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import org.apache.iceberg.aws.s3.signer.ImmutableS3SignRequest;
-import org.apache.iceberg.aws.s3.signer.S3SignRequest;
-import org.apache.iceberg.aws.s3.signer.S3SignResponse;
+import org.apache.iceberg.rest.requests.ImmutableRemoteSignRequest;
+import org.apache.iceberg.rest.requests.RemoteSignRequest;
+import org.apache.iceberg.rest.responses.RemoteSignResponse;
 import org.apache.polaris.service.storage.StorageConfiguration;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -41,12 +41,12 @@ import software.amazon.awssdk.auth.credentials.AwsCredentials;
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider;
 
 @ExtendWith(MockitoExtension.class)
-class S3RequestSignerImplTest {
+class S3RemoteRequestSignerTest {
 
   @Mock private StorageConfiguration storageConfiguration;
   @Mock private AwsCredentialsProvider awsCredentialsProvider;
 
-  @InjectMocks private S3RequestSignerImpl s3RequestSigner;
+  @InjectMocks private S3RemoteRequestSigner s3RequestSigner;
 
   private static final String TEST_ACCESS_KEY = "test-access-key";
   private static final String TEST_SECRET_KEY = "test-secret-key";
@@ -65,8 +65,8 @@ class S3RequestSignerImplTest {
   @Test
   void testGET() {
     // Given
-    S3SignRequest request =
-        ImmutableS3SignRequest.builder()
+    RemoteSignRequest request =
+        ImmutableRemoteSignRequest.builder()
             .region(TEST_REGION)
             .method("GET")
             .uri(TEST_URI)
@@ -75,7 +75,7 @@ class S3RequestSignerImplTest {
             .build();
 
     // When
-    S3SignResponse response = s3RequestSigner.signRequest(request);
+    RemoteSignResponse response = s3RequestSigner.signRequest(request);
 
     // Then
     assertThat(response).isNotNull();
@@ -87,8 +87,8 @@ class S3RequestSignerImplTest {
   void testPUT() {
     // Given
     String requestBody = "{\"test\": \"data\"}";
-    S3SignRequest request =
-        ImmutableS3SignRequest.builder()
+    RemoteSignRequest request =
+        ImmutableRemoteSignRequest.builder()
             .region(TEST_REGION)
             .method("PUT")
             .uri(TEST_URI)
@@ -98,7 +98,7 @@ class S3RequestSignerImplTest {
             .build();
 
     // When
-    S3SignResponse response = s3RequestSigner.signRequest(request);
+    RemoteSignResponse response = s3RequestSigner.signRequest(request);
 
     // Then
     assertThat(response).isNotNull();
@@ -110,8 +110,8 @@ class S3RequestSignerImplTest {
   void testPOST() {
     // Given
     String requestBody = "{\"test\": \"data\"}";
-    S3SignRequest request =
-        ImmutableS3SignRequest.builder()
+    RemoteSignRequest request =
+        ImmutableRemoteSignRequest.builder()
             .region(TEST_REGION)
             .method("POST")
             .uri(TEST_URI)
@@ -121,7 +121,7 @@ class S3RequestSignerImplTest {
             .build();
 
     // When
-    S3SignResponse response = s3RequestSigner.signRequest(request);
+    RemoteSignResponse response = s3RequestSigner.signRequest(request);
 
     // Then
     assertThat(response).isNotNull();
@@ -133,8 +133,8 @@ class S3RequestSignerImplTest {
   void testDELETE() {
     // Given
     String requestBody = "{\"test\": \"data\"}";
-    S3SignRequest request =
-        ImmutableS3SignRequest.builder()
+    RemoteSignRequest request =
+        ImmutableRemoteSignRequest.builder()
             .region(TEST_REGION)
             .method("DELETE")
             .uri(TEST_URI)
@@ -144,7 +144,7 @@ class S3RequestSignerImplTest {
             .build();
 
     // When
-    S3SignResponse response = s3RequestSigner.signRequest(request);
+    RemoteSignResponse response = s3RequestSigner.signRequest(request);
 
     // Then
     assertThat(response).isNotNull();
@@ -156,8 +156,8 @@ class S3RequestSignerImplTest {
   void testQueryParameters() {
     // Given
     URI uriWithQuery = URI.create(TEST_URI + "?prefix=test&max-keys=100");
-    S3SignRequest request =
-        ImmutableS3SignRequest.builder()
+    RemoteSignRequest request =
+        ImmutableRemoteSignRequest.builder()
             .region(TEST_REGION)
             .method("GET")
             .uri(uriWithQuery)
@@ -166,7 +166,7 @@ class S3RequestSignerImplTest {
             .build();
 
     // When
-    S3SignResponse response = s3RequestSigner.signRequest(request);
+    RemoteSignResponse response = s3RequestSigner.signRequest(request);
 
     // Then
     assertThat(response).isNotNull();
@@ -180,8 +180,8 @@ class S3RequestSignerImplTest {
   @Test
   void testHeaders() {
     // Given
-    S3SignRequest request =
-        ImmutableS3SignRequest.builder()
+    RemoteSignRequest request =
+        ImmutableRemoteSignRequest.builder()
             .region(TEST_REGION)
             .method("GET")
             .uri(TEST_URI)
@@ -195,7 +195,7 @@ class S3RequestSignerImplTest {
             .build();
 
     // When
-    S3SignResponse response = s3RequestSigner.signRequest(request);
+    RemoteSignResponse response = s3RequestSigner.signRequest(request);
 
     // Then
     assertThat(response).isNotNull();
@@ -207,7 +207,7 @@ class S3RequestSignerImplTest {
     assertThat(response.headers().get("User-Agent").getFirst()).isEqualTo("test-client/1.0");
   }
 
-  private static void assertHeaders(S3SignResponse response) {
+  private static void assertHeaders(RemoteSignResponse response) {
     assertThat(response.headers()).isNotEmpty();
     assertThat(response.headers()).containsKey("X-Amz-Date");
     assertThat(response.headers()).containsKey("x-amz-content-sha256");

@@ -18,9 +18,9 @@
  */
 package org.apache.polaris.core.storage;
 
+import org.apache.iceberg.CatalogProperties;
 import org.apache.iceberg.aws.AwsClientProperties;
 import org.apache.iceberg.aws.s3.S3FileIOProperties;
-import org.apache.iceberg.aws.s3.signer.S3V4RestSignerClient;
 import org.apache.iceberg.azure.AzureProperties;
 import org.apache.iceberg.gcp.GCPProperties;
 
@@ -59,15 +59,18 @@ public enum StorageAccessProperty {
       S3FileIOProperties.REMOTE_SIGNING_ENABLED,
       "whether to enable remote signing for S3 requests",
       false),
-  AWS_REMOTE_SIGNER_URI(
+
+  @Deprecated
+  AWS_SIGNER_URI(
       String.class,
-      S3V4RestSignerClient.S3_SIGNER_URI,
-      "the base URI for the remote signer service, used for signing S3 requests",
+      "s3.signer.uri",
+      "the base URI for the remote signer service, used for signing S3 requests. Deprecated, use signer.uri instead.",
       false),
-  AWS_REMOTE_SIGNER_ENDPOINT(
+  @Deprecated
+  AWS_SIGNER_ENDPOINT(
       String.class,
-      S3V4RestSignerClient.S3_SIGNER_ENDPOINT,
-      "the endpoint for the remote signer service, used for signing S3 requests",
+      "s3.signer.endpoint",
+      "the endpoint for the remote signer service, used for signing S3 requests. Deprecated, use signer.endpoint instead.",
       false),
 
   GCS_ACCESS_TOKEN(String.class, "gcs.oauth2.token", "the gcs scoped access token", true),
@@ -105,7 +108,20 @@ public enum StorageAccessProperty {
       AzureProperties.ADLS_SAS_TOKEN_EXPIRES_AT_MS_PREFIX,
       "The expiration time for the access token, in milliseconds",
       true,
-      true);
+      true),
+
+  // Storage provider-agnostic
+  SIGNER_URI(
+      String.class,
+      CatalogProperties.SIGNER_URI,
+      "the base URI for the remote signer service, used for signing requests",
+      false),
+  SIGNER_ENDPOINT(
+      String.class,
+      CatalogProperties.SIGNER_ENDPOINT,
+      "the endpoint for the remote signer service, used for signing requests",
+      false),
+  ;
 
   private final Class valueType;
   private final String propertyName;

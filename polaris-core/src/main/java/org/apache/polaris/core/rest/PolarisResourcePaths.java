@@ -34,6 +34,14 @@ public class PolarisResourcePaths {
    */
   public static final String API_PATH_SEGMENT = "api";
 
+  /** The "polaris/" path segment is the second path segment of all Polaris API paths. */
+  public static final String POLARIS_PATH_SEGMENT = "polaris";
+
+  /**
+   * The "catalog/" path segment is the second path segment of all Iceberg REST Catalog API paths.
+   */
+  public static final String CATALOG_PATH_SEGMENT = "catalog";
+
   // Generic Table endpoints
   public static final String V1_GENERIC_TABLES =
       "polaris/v1/{prefix}/namespaces/{namespace}/generic-tables";
@@ -60,7 +68,12 @@ public class PolarisResourcePaths {
 
   public String genericTables(Namespace ns) {
     return SLASH.join(
-        "polaris", "v1", prefix, "namespaces", RESTUtil.encodeNamespace(ns), "generic-tables");
+        POLARIS_PATH_SEGMENT,
+        "v1",
+        prefix,
+        "namespaces",
+        RESTUtil.encodeNamespace(ns),
+        "generic-tables");
   }
 
   public String credentialsPath(TableIdentifier ident) {
@@ -76,23 +89,12 @@ public class PolarisResourcePaths {
 
   public String genericTable(TableIdentifier ident) {
     return SLASH.join(
-        "polaris",
+        POLARIS_PATH_SEGMENT,
         "v1",
         prefix,
         "namespaces",
         RESTUtil.encodeNamespace(ident.namespace()),
         "generic-tables",
-        RESTUtil.encodeString(ident.name()));
-  }
-
-  public String s3RemoteSigning(TableIdentifier ident) {
-    return SLASH.join(
-        "s3-sign",
-        "v1",
-        prefix,
-        "namespaces",
-        RESTUtil.encodeNamespace(ident.namespace()),
-        "tables",
         RESTUtil.encodeString(ident.name()));
   }
 }

@@ -24,6 +24,7 @@ import static org.apache.polaris.service.catalog.validation.IcebergPropertiesVal
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
+import io.smallrye.common.annotation.Identifier;
 import jakarta.enterprise.context.RequestScoped;
 import jakarta.enterprise.inject.Any;
 import jakarta.enterprise.inject.Instance;
@@ -46,12 +47,14 @@ import org.apache.iceberg.rest.requests.CreateTableRequest;
 import org.apache.iceberg.rest.requests.CreateViewRequest;
 import org.apache.iceberg.rest.requests.ImmutableCreateViewRequest;
 import org.apache.iceberg.rest.requests.RegisterTableRequest;
+import org.apache.iceberg.rest.requests.RemoteSignRequest;
 import org.apache.iceberg.rest.requests.RenameTableRequest;
 import org.apache.iceberg.rest.requests.ReportMetricsRequest;
 import org.apache.iceberg.rest.requests.UpdateNamespacePropertiesRequest;
 import org.apache.iceberg.rest.requests.UpdateTableRequest;
 import org.apache.iceberg.rest.responses.ImmutableLoadCredentialsResponse;
 import org.apache.iceberg.rest.responses.LoadTableResponse;
+import org.apache.iceberg.rest.responses.RemoteSignResponse;
 import org.apache.polaris.core.PolarisDiagnostics;
 import org.apache.polaris.core.auth.PolarisAuthorizer;
 import org.apache.polaris.core.auth.PolarisPrincipal;
@@ -75,6 +78,7 @@ import org.apache.polaris.service.context.catalog.CallContextCatalogFactory;
 import org.apache.polaris.service.http.IcebergHttpUtil;
 import org.apache.polaris.service.http.IfNoneMatch;
 import org.apache.polaris.service.reporting.PolarisMetricsReporter;
+import org.apache.polaris.service.storage.sign.RemoteRequestSigner;
 import org.apache.polaris.service.types.CommitTableRequest;
 import org.apache.polaris.service.types.CommitViewRequest;
 import org.apache.polaris.service.types.NotificationRequest;
@@ -107,6 +111,7 @@ public class IcebergCatalogAdapter
   private final Instance<ExternalCatalogFactory> externalCatalogFactories;
   private final StorageAccessConfigProvider storageAccessConfigProvider;
   private final PolarisMetricsReporter metricsReporter;
+  private final RemoteRequestSigner s3RequestSigner;
 
   @Inject
   public IcebergCatalogAdapter(
@@ -124,7 +129,8 @@ public class IcebergCatalogAdapter
       CatalogHandlerUtils catalogHandlerUtils,
       @Any Instance<ExternalCatalogFactory> externalCatalogFactories,
       StorageAccessConfigProvider storageAccessConfigProvider,
-      PolarisMetricsReporter metricsReporter) {
+      PolarisMetricsReporter metricsReporter,
+      @Identifier("s3") RemoteRequestSigner s3RequestSigner) {
     this.diagnostics = diagnostics;
     this.realmContext = realmContext;
     this.callContext = callContext;
@@ -141,6 +147,7 @@ public class IcebergCatalogAdapter
     this.externalCatalogFactories = externalCatalogFactories;
     this.storageAccessConfigProvider = storageAccessConfigProvider;
     this.metricsReporter = metricsReporter;
+    this.s3RequestSigner = s3RequestSigner;
   }
 
   /**
@@ -189,7 +196,8 @@ public class IcebergCatalogAdapter
         reservedProperties,
         catalogHandlerUtils,
         externalCatalogFactories,
-        storageAccessConfigProvider);
+        storageAccessConfigProvider,
+        s3RequestSigner);
   }
 
   @Override
@@ -752,5 +760,28 @@ public class IcebergCatalogAdapter
       String warehouse, RealmContext realmContext, SecurityContext securityContext) {
     return withCatalogByName(
         securityContext, warehouse, catalog -> Response.ok(catalog.getConfig()).build());
+  }
+
+  @Override
+  public Response signRequest(
+      String prefix,
+      String namespace,
+      String table,
+      String provider,
+      RemoteSignRequest signRequest,
+      RealmContext realmContext,
+      SecurityContext securityContext) {
+    if (!provider.equalsIgnoreCase("s3")) {
+      throw new BadRequestException("Only AWS S3 remote signing is supported");
+    }
+    Namespace ns = decodeNamespace(namespace);
+    TableIdentifier tableIdentifier = TableIdentifier.of(ns, RESTUtil.decodeString(table));
+    return withCatalog(
+        securityContext,
+        prefix,
+        catalog -> {
+          RemoteSignResponse response = catalog.signS3Request(signRequest, tableIdentifier);
+          return Response.status(Response.Status.OK).entity(response).build();
+        });
   }
 }

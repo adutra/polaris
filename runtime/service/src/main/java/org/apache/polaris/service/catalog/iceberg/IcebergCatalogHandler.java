@@ -73,6 +73,7 @@ import org.apache.iceberg.rest.requests.CreateNamespaceRequest;
 import org.apache.iceberg.rest.requests.CreateTableRequest;
 import org.apache.iceberg.rest.requests.CreateViewRequest;
 import org.apache.iceberg.rest.requests.RegisterTableRequest;
+import org.apache.iceberg.rest.requests.RemoteSignRequest;
 import org.apache.iceberg.rest.requests.RenameTableRequest;
 import org.apache.iceberg.rest.requests.UpdateNamespacePropertiesRequest;
 import org.apache.iceberg.rest.requests.UpdateTableRequest;
@@ -83,6 +84,7 @@ import org.apache.iceberg.rest.responses.ListNamespacesResponse;
 import org.apache.iceberg.rest.responses.ListTablesResponse;
 import org.apache.iceberg.rest.responses.LoadTableResponse;
 import org.apache.iceberg.rest.responses.LoadViewResponse;
+import org.apache.iceberg.rest.responses.RemoteSignResponse;
 import org.apache.iceberg.rest.responses.UpdateNamespacePropertiesResponse;
 import org.apache.polaris.core.PolarisDiagnostics;
 import org.apache.polaris.core.auth.PolarisAuthorizableOperation;
@@ -90,6 +92,7 @@ import org.apache.polaris.core.auth.PolarisAuthorizer;
 import org.apache.polaris.core.auth.PolarisPrincipal;
 import org.apache.polaris.core.catalog.ExternalCatalogFactory;
 import org.apache.polaris.core.config.FeatureConfiguration;
+import org.apache.polaris.core.config.RealmConfig;
 import org.apache.polaris.core.connection.ConnectionConfigInfoDpo;
 import org.apache.polaris.core.connection.ConnectionType;
 import org.apache.polaris.core.context.CallContext;
@@ -112,6 +115,7 @@ import org.apache.polaris.core.persistence.resolver.Resolver;
 import org.apache.polaris.core.persistence.resolver.ResolverFactory;
 import org.apache.polaris.core.persistence.resolver.ResolverStatus;
 import org.apache.polaris.core.rest.PolarisEndpoints;
+import org.apache.polaris.core.storage.LocationRestrictions;
 import org.apache.polaris.core.storage.PolarisStorageActions;
 import org.apache.polaris.core.storage.StorageAccessConfig;
 import org.apache.polaris.core.storage.StorageUtil;
@@ -125,7 +129,7 @@ import org.apache.polaris.service.config.ReservedProperties;
 import org.apache.polaris.service.context.catalog.CallContextCatalogFactory;
 import org.apache.polaris.service.http.IcebergHttpUtil;
 import org.apache.polaris.service.http.IfNoneMatch;
-import org.apache.polaris.service.storage.s3.sign.S3RemoteSigningCatalogHandler;
+import org.apache.polaris.service.storage.sign.RemoteRequestSigner;
 import org.apache.polaris.service.types.NotificationRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -186,6 +190,7 @@ public class IcebergCatalogHandler extends CatalogHandler implements AutoCloseab
   private final ReservedProperties reservedProperties;
   private final CatalogHandlerUtils catalogHandlerUtils;
   private final StorageAccessConfigProvider storageAccessConfigProvider;
+  private final RemoteRequestSigner s3RequestSigner;
 
   // Catalog instance will be initialized after authorizing resolver successfully resolves
   // the catalog entity.
@@ -211,7 +216,8 @@ public class IcebergCatalogHandler extends CatalogHandler implements AutoCloseab
       ReservedProperties reservedProperties,
       CatalogHandlerUtils catalogHandlerUtils,
       Instance<ExternalCatalogFactory> externalCatalogFactories,
-      StorageAccessConfigProvider storageAccessConfigProvider) {
+      StorageAccessConfigProvider storageAccessConfigProvider,
+      RemoteRequestSigner s3RequestSigner) {
     super(
         diagnostics,
         callContext,
@@ -228,6 +234,7 @@ public class IcebergCatalogHandler extends CatalogHandler implements AutoCloseab
     this.reservedProperties = reservedProperties;
     this.catalogHandlerUtils = catalogHandlerUtils;
     this.storageAccessConfigProvider = storageAccessConfigProvider;
+    this.s3RequestSigner = s3RequestSigner;
   }
 
   private CatalogEntity getResolvedCatalogEntity() {
@@ -854,8 +861,7 @@ public class IcebergCatalogHandler extends CatalogHandler implements AutoCloseab
 
     if (delegationMode == REMOTE_SIGNING) {
 
-      S3RemoteSigningCatalogHandler.throwIfRemoteSigningNotEnabled(
-          callContext.getRealmConfig(), getResolvedCatalogEntity());
+      throwIfRemoteSigningNotEnabled(callContext.getRealmConfig(), getResolvedCatalogEntity());
 
       StorageAccessConfig accessConfig =
           storageAccessConfigProvider.getStorageAccessConfigForRemoteSigning(
@@ -1405,5 +1411,84 @@ public class IcebergCatalogHandler extends CatalogHandler implements AutoCloseab
                 .addAll(PolarisEndpoints.getSupportedPolicyEndpoints(realmConfig))
                 .build())
         .build();
+  }
+
+  public RemoteSignResponse signS3Request(
+      RemoteSignRequest signRequest, TableIdentifier tableIdentifier) {
+
+    String method = signRequest.method();
+    PolarisAuthorizableOperation authzOp =
+        method.equalsIgnoreCase("PUT")
+                || method.equalsIgnoreCase("POST")
+                || method.equalsIgnoreCase("DELETE")
+                || method.equalsIgnoreCase("PATCH")
+            ? PolarisAuthorizableOperation.SIGN_S3_WRITE_REQUEST
+            : PolarisAuthorizableOperation.SIGN_S3_READ_REQUEST;
+
+    authorizeRemoteSigningOrThrow(EnumSet.of(authzOp), tableIdentifier);
+
+    // Must be done after the authorization check, as the auth check creates the catalog entity;
+    // also, materializing the catalog here could hurt performance.
+    throwIfRemoteSigningNotEnabled(callContext.getRealmConfig(), getResolvedCatalogEntity());
+
+    validateLocations(signRequest, tableIdentifier);
+
+    return s3RequestSigner.signRequest(signRequest);
+  }
+
+  private void validateLocations(RemoteSignRequest signRequest, TableIdentifier tableIdentifier) {
+
+    // Will point to the table entity if it exists, otherwise the namespace entity.
+    PolarisResolvedPathWrapper tableOrNamespace =
+        CatalogUtils.findResolvedStorageEntity(resolutionManifest, tableIdentifier);
+
+    Set<String> targetLocations = getTargetLocations(signRequest);
+
+    // If the table exists already, validate the target locations against the table's locations;
+    // otherwise, validate against the namespace's locations using the entity path hierarchy.
+    if (baseCatalog.tableExists(tableIdentifier)) {
+
+      // TODO M2: remove the need to load the table as it is very expensive.
+      // Unfortunately, checking the table entity only is not enough; we could
+      // technically call:
+      // StorageUtil.getLocationsUsedByTable(tableEntity.getBaseLocation(),
+      // tableEntity.getPropertiesAsMap());
+      // But the properties 'write.data.path' and 'write.metadata.path'
+      // are not persisted in the table entity's internal properties.
+      Table table = baseCatalog.loadTable(tableIdentifier);
+      if (table instanceof BaseTable baseTable) {
+        Set<String> allowedLocations =
+            StorageUtil.getLocationsUsedByTable(baseTable.operations().current());
+        new LocationRestrictions(allowedLocations)
+            .validate(callContext.getRealmConfig(), tableIdentifier, targetLocations);
+      } else {
+        throw new ForbiddenException("Location not allowed");
+      }
+
+    } else {
+      CatalogUtils.validateLocationsForTableLike(
+          callContext.getRealmConfig(), tableIdentifier, targetLocations, tableOrNamespace);
+    }
+  }
+
+  private Set<String> getTargetLocations(RemoteSignRequest signRequest) {
+    // TODO M2: map http URI to s3 URI
+    return Set.of();
+  }
+
+  public static void throwIfRemoteSigningNotEnabled(
+      RealmConfig realmConfig, CatalogEntity catalogEntity) {
+    if (catalogEntity.isExternal()) {
+      throw new ForbiddenException("Remote signing is not enabled for external catalogs.");
+    }
+    boolean remoteSigningEnabled =
+        realmConfig.getConfig(FeatureConfiguration.REMOTE_SIGNING_ENABLED, catalogEntity);
+    if (!remoteSigningEnabled) {
+      throw new ForbiddenException(
+          "Remote signing is not enabled for this catalog. To enable this feature, set the Polaris configuration %s "
+              + "or the catalog configuration %s.",
+          FeatureConfiguration.REMOTE_SIGNING_ENABLED.key(),
+          FeatureConfiguration.REMOTE_SIGNING_ENABLED.catalogConfig());
+    }
   }
 }

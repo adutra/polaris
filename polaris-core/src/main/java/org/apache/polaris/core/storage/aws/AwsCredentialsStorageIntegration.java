@@ -176,8 +176,12 @@ public class AwsCredentialsStorageIntegration
         StorageAccessConfig.builder().supportsCredentialVending(false).supportsRemoteSigning(true);
 
     accessConfig.put(StorageAccessProperty.AWS_REMOTE_SIGNING_ENABLED, Boolean.TRUE.toString());
-    accessConfig.put(StorageAccessProperty.AWS_REMOTE_SIGNER_URI, signerUri.toString());
-    accessConfig.put(StorageAccessProperty.AWS_REMOTE_SIGNER_ENDPOINT, signerEndpoint);
+    // Iceberg >= 1.11
+    accessConfig.put(StorageAccessProperty.SIGNER_URI, signerUri.toString());
+    accessConfig.put(StorageAccessProperty.SIGNER_ENDPOINT, signerEndpoint);
+    // Iceberg < 1.11
+    accessConfig.put(StorageAccessProperty.AWS_SIGNER_URI, signerUri.toString());
+    accessConfig.put(StorageAccessProperty.AWS_SIGNER_ENDPOINT, signerEndpoint);
 
     addCommonProperties(storageConfig.getRegion(), accessConfig, storageConfig, Optional.empty());
 
