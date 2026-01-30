@@ -109,6 +109,7 @@ openApiGenerate {
       "CommitTransactionRequest" to "org.apache.iceberg.rest.requests.CommitTransactionRequest",
       "CreateViewRequest" to "org.apache.iceberg.rest.requests.CreateViewRequest",
       "RegisterTableRequest" to "org.apache.iceberg.rest.requests.RegisterTableRequest",
+      "RegisterViewRequest" to "org.apache.iceberg.rest.requests.RegisterViewRequest",
       "RemoteSignRequest" to "org.apache.iceberg.rest.requests.RemoteSignRequest",
       "RemoteSignResult" to "org.apache.iceberg.rest.responses.RemoteSignResponse",
       "IcebergErrorResponse" to "org.apache.iceberg.rest.responses.ErrorResponse",
