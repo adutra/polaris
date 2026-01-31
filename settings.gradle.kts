@@ -117,6 +117,14 @@ plugins {
   id("com.gradle.common-custom-user-data-gradle-plugin") version "2.4.0"
 }
 
+// Allow overriding the Iceberg version via Gradle property (-PicebergVersion=<version>)
+// This is useful for testing against Iceberg nightly builds
+val icebergVersionOverride: String? =
+  providers.gradleProperty("icebergVersion").orNull ?: System.getenv("ICEBERG_VERSION")
+
+// Add Apache Snapshots repository when using a SNAPSHOT version of Iceberg
+val useApacheSnapshots = icebergVersionOverride?.contains("SNAPSHOT") == true
+
 dependencyResolutionManagement {
   repositoriesMode = RepositoriesMode.FAIL_ON_PROJECT_REPOS
   repositories {
@@ -125,6 +133,13 @@ dependencyResolutionManagement {
       url = uri("https://jitpack.io")
       content { includeModule("com.github.RoaringBitmap.RoaringBitmap", "roaringbitmap") }
     }
+    if (useApacheSnapshots) {
+      maven {
+        name = "ApacheSnapshots"
+        url = uri("https://repository.apache.org/content/repositories/snapshots/")
+        mavenContent { snapshotsOnly() }
+      }
+    }
     gradlePluginPortal()
   }
 }
@@ -132,6 +147,14 @@ dependencyResolutionManagement {
 dependencyResolutionManagement {
   // version catalog used by the polaris plugin code, such as polaris-spark-3.5
   versionCatalogs { create("pluginlibs") { from(files("plugins/pluginlibs.versions.toml")) } }
+}
+
+if (icebergVersionOverride != null) {
+  dependencyResolutionManagement {
+    versionCatalogs {
+      named("libs") { version("iceberg", icebergVersionOverride) }
+    }
+  }
 }
 
 gradle.beforeProject {
