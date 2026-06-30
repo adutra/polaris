@@ -104,7 +104,9 @@ dependencies {
   intTestBase(enforcedPlatform(libs.quarkus.bom))
   intTestBase("io.rest-assured:rest-assured")
   intTestBase(project(":polaris-tests"))
-  intTestBase(project(":polaris-runtime-test-common"))
+  intTestBase(project(":polaris-runtime-test-common")) {
+    exclude(group = "org.jboss.slf4j", module = "slf4j-jboss-logmanager")
+  }
   intTestBase(project(":polaris-api-management-model"))
   intTestBase(platform(libs.iceberg.bom))
   intTestBase("org.apache.iceberg:iceberg-api")

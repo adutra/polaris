@@ -69,7 +69,9 @@ testing {
         implementation(platform(libs.quarkus.bom))
         implementation("io.rest-assured:rest-assured")
         implementation(project(":polaris-tests"))
-        implementation(project(":polaris-runtime-test-common"))
+        implementation(project(":polaris-runtime-test-common")) {
+          exclude(group = "org.jboss.slf4j", module = "slf4j-jboss-logmanager")
+        }
         implementation(project(":polaris-api-management-model"))
         implementation(platform(libs.iceberg.bom))
         implementation("org.apache.iceberg:iceberg-api")
