@@ -16,14 +16,16 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-package org.apache.polaris.service.config;
+package org.apache.polaris.service.authz;
 
-import io.smallrye.config.ConfigMapping;
 import io.smallrye.config.WithDefault;
 
-@ConfigMapping(prefix = "polaris.authorization")
-public interface AuthorizationConfiguration {
+public interface AuthorizationRealmConfiguration {
 
+  /**
+   * The type of the authorizer. Must be a registered {@link
+   * org.apache.polaris.core.auth.PolarisAuthorizerFactory} identifier.
+   */
   @WithDefault("internal")
   String type();
 }

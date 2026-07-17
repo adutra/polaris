@@ -19,6 +19,8 @@
 package org.apache.polaris.extension.auth.opa;
 
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.inject.Any;
+import jakarta.enterprise.inject.Instance;
 import jakarta.enterprise.inject.Produces;
 import java.util.ArrayList;
 import java.util.List;
@@ -31,25 +33,27 @@ public class OpaProductionReadinessChecks {
 
   @Produces
   public ProductionReadinessCheck checkOpaAuthorization(
-      PolarisAuthorizerFactory authorizerFactory) {
-    if (authorizerFactory instanceof OpaPolarisAuthorizerFactory opaFactory) {
-      OpaAuthorizationConfig config = opaFactory.getConfig();
+      @Any Instance<PolarisAuthorizerFactory> authorizerFactories) {
+    for (PolarisAuthorizerFactory factory : authorizerFactories) {
+      if (factory instanceof OpaPolarisAuthorizerFactory opaFactory) {
+        OpaAuthorizationConfig config = opaFactory.getConfig();
 
-      List<Error> errors = new ArrayList<>();
+        List<Error> errors = new ArrayList<>();
 
-      errors.add(
-          Error.of(
-              "OPA authorization is currently a Beta feature and is not a stable release. Breaking changes may be introduced in future versions. Use with caution in production environments.",
-              "polaris.authorization.type"));
-
-      if (!config.http().verifySsl()) {
         errors.add(
-            Error.ofSevere(
-                "SSL certificate verification is disabled for OPA communication. This exposes the service to man-in-the-middle attacks and other severe security risks.",
-                "polaris.authorization.opa.http.verify-ssl"));
-      }
+            Error.of(
+                "OPA authorization is currently a Beta feature and is not a stable release. Breaking changes may be introduced in future versions. Use with caution in production environments.",
+                "polaris.authorization.type"));
 
-      return ProductionReadinessCheck.of(errors);
+        if (!config.http().verifySsl()) {
+          errors.add(
+              Error.ofSevere(
+                  "SSL certificate verification is disabled for OPA communication. This exposes the service to man-in-the-middle attacks and other severe security risks.",
+                  "polaris.authorization.opa.http.verify-ssl"));
+        }
+
+        return ProductionReadinessCheck.of(errors);
+      }
     }
     return ProductionReadinessCheck.OK;
   }

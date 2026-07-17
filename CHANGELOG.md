@@ -28,6 +28,9 @@ request adding CHANGELOG notes for breaking (!) changes and possibly other secti
 ## [Unreleased]
 
 ### Highlights
+- The authorizer can now be configured per realm, using the same pattern as the authenticator.
+  Set `polaris.authorization.type` as the global default and override it for individual realms with
+  `polaris.authorization.realms.<realm-id>.type`.
 
 ### Upgrade notes
 

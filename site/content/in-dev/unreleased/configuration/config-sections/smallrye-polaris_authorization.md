@@ -25,4 +25,5 @@ build:
 
 | Property | Default Value | Type | Description |
 |----------|---------------|------|-------------|
-| `polaris.authorization.type` | `internal` | `string` |  |
+| `polaris.authorization.type` | `internal` | `string` | The type of the authorizer. Must be a registered (`org.apache.polaris.core.auth.PolarisAuthorizerFactory`) identifier.  |
+| `polaris.authorization.`_`<realm>`_`.type` | `internal` | `string` | The type of the authorizer. Must be a registered (`org.apache.polaris.core.auth.PolarisAuthorizerFactory`) identifier.  |
