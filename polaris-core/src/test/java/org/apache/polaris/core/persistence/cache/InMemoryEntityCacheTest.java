@@ -34,6 +34,9 @@ import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.polaris.core.PolarisCallContext;
 import org.apache.polaris.core.PolarisDefaultDiagServiceImpl;
 import org.apache.polaris.core.PolarisDiagnostics;
+import org.apache.polaris.core.config.BehaviorChangeConfiguration;
+import org.apache.polaris.core.config.FeatureConfiguration;
+import org.apache.polaris.core.config.RealmConfig;
 import org.apache.polaris.core.entity.PolarisBaseEntity;
 import org.apache.polaris.core.entity.PolarisChangeTrackingVersions;
 import org.apache.polaris.core.entity.PolarisEntity;
@@ -479,8 +482,8 @@ public class InMemoryEntityCacheTest {
 
   /* Helper for `testEntityWeigher` */
   private int getEntityWeight(PolarisEntity entity) {
-    return EntityWeigher.getInstance()
-        .weigh(-1L, new ResolvedPolarisEntity(diagServices, entity, List.of(), 1));
+    return EntityWeigher.INSTANCE.weigh(
+        -1L, new ResolvedPolarisEntity(diagServices, entity, List.of(), 1));
   }
 
   @Test
@@ -1070,6 +1073,87 @@ public class InMemoryEntityCacheTest {
     } finally {
       executorService.shutdown();
     }
+  }
+
+  /**
+   * Regression test for the unbounded {@code byName} map reported in #5386. Name lookups must never
+   * keep entities alive beyond the weight budget of the id cache: this test sets the budget below
+   * the weight of a single entity and checks that nothing is resolvable by name afterwards.
+   */
+  @Test
+  public void testNameEntriesAreReclaimedUnderWeightBound() throws Exception {
+    PolarisMetaStoreManager mockedMetaStoreManager = Mockito.spy(this.metaStoreManager);
+
+    // A weight budget smaller than a single entity, so every entity is evictable.
+    RealmConfig realmConfig = Mockito.mock(RealmConfig.class);
+    Mockito.when(realmConfig.getConfig(FeatureConfiguration.ENTITY_CACHE_WEIGHER_TARGET))
+        .thenReturn(100L);
+    Mockito.when(realmConfig.getConfig(BehaviorChangeConfiguration.ENTITY_CACHE_SOFT_VALUES))
+        .thenReturn(false);
+
+    InMemoryEntityCache cache =
+        new InMemoryEntityCache(diagServices, realmConfig, mockedMetaStoreManager);
+
+    // These are pre-created by testCreateTestCatalog(); resolving them also gives us the id/parent
+    // coordinates each name key needs.
+    PolarisBaseEntity catalog = this.tm.ensureExistsByName(null, PolarisEntityType.CATALOG, "test");
+    PolarisBaseEntity n1 =
+        this.tm.ensureExistsByName(List.of(catalog), PolarisEntityType.NAMESPACE, "N1");
+    PolarisBaseEntity n5 =
+        this.tm.ensureExistsByName(List.of(catalog), PolarisEntityType.NAMESPACE, "N5");
+    PolarisBaseEntity n6 =
+        this.tm.ensureExistsByName(List.of(catalog, n5), PolarisEntityType.NAMESPACE, "N6");
+    List<EntityCacheByNameKey> nameKeys =
+        List.of(
+                catalog,
+                n1,
+                n5,
+                this.tm.ensureExistsByName(List.of(catalog), PolarisEntityType.CATALOG_ROLE, "R1"),
+                this.tm.ensureExistsByName(
+                    List.of(catalog, n5, n6),
+                    PolarisEntityType.TABLE_LIKE,
+                    PolarisEntitySubType.ICEBERG_TABLE,
+                    "T5"))
+            .stream()
+            .map(EntityCacheByNameKey::new)
+            .collect(Collectors.toList());
+
+    for (EntityCacheByNameKey nameKey : nameKeys) {
+      assertThat(cache.getOrLoadEntityByName(this.callCtx, nameKey))
+          .as("entity %s must be resolvable", nameKey)
+          .isNotNull();
+    }
+
+    // Caffeine performs eviction from a background maintenance task, so poll instead of asserting
+    // immediately.
+    for (EntityCacheByNameKey nameKey : nameKeys) {
+      assertThat(awaitReclaimed(cache, nameKey))
+          .as("name entry %s must be reclaimed under the weight bound", nameKey)
+          .isTrue();
+    }
+
+    // The bound is what makes those entries reclaimable, so raising it must keep them resident.
+    Mockito.when(realmConfig.getConfig(FeatureConfiguration.ENTITY_CACHE_WEIGHER_TARGET))
+        .thenReturn(FeatureConfiguration.ENTITY_CACHE_WEIGHER_TARGET.defaultValue());
+    InMemoryEntityCache unboundedPressureCache =
+        new InMemoryEntityCache(diagServices, realmConfig, mockedMetaStoreManager);
+    for (EntityCacheByNameKey nameKey : nameKeys) {
+      assertThat(unboundedPressureCache.getOrLoadEntityByName(this.callCtx, nameKey)).isNotNull();
+    }
+    for (EntityCacheByNameKey nameKey : nameKeys) {
+      assertThat(unboundedPressureCache.getEntityByName(nameKey))
+          .as("name entry %s must stay resident within the weight bound", nameKey)
+          .isNotNull();
+    }
+  }
+
+  /** Polls for the name index to evict one entry, since eviction runs on a maintenance task. */
+  private static boolean awaitReclaimed(InMemoryEntityCache cache, EntityCacheByNameKey nameKey)
+      throws InterruptedException {
+    for (int attempt = 0; attempt < 100 && cache.getEntityByName(nameKey) != null; attempt++) {
+      Thread.sleep(50);
+    }
+    return cache.getEntityByName(nameKey) == null;
   }
 
   private static ResolvedPolarisEntity getResolvedPolarisEntity(PolarisBaseEntity catalog) {
