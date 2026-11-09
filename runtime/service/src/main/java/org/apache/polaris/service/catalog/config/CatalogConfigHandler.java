@@ -43,8 +43,8 @@ import org.apache.polaris.core.auth.PolarisPrincipal;
 import org.apache.polaris.core.auth.SingleTargetAuthorizationIntent;
 import org.apache.polaris.core.config.FeatureConfiguration;
 import org.apache.polaris.core.config.RealmConfig;
+import org.apache.polaris.core.entity.CatalogEntity;
 import org.apache.polaris.core.entity.PolarisBaseEntity;
-import org.apache.polaris.core.entity.PolarisEntity;
 import org.apache.polaris.core.entity.PolarisEntityType;
 import org.apache.polaris.core.persistence.resolver.PolarisResolutionManifest;
 import org.apache.polaris.core.persistence.resolver.ResolutionManifestFactory;
@@ -115,7 +115,8 @@ public class CatalogConfigHandler {
       authorizer.authorize(authorizationState, configAuthzRequest).throwIfDenied();
     }
 
-    Map<String, String> properties = PolarisEntity.of(catalogEntity).getPropertiesAsMap();
+    CatalogEntity catalog = CatalogEntity.of(catalogEntity);
+    Map<String, String> properties = catalog.getPropertiesAsMap();
 
     ConfigResponse.Builder builder =
         ConfigResponse.builder()
@@ -128,7 +129,7 @@ public class CatalogConfigHandler {
                     // always communicate the default namespace separator to clients.
                     RESTCatalogProperties.NAMESPACE_SEPARATOR,
                     NamespaceUtils.DEFAULT_NAMESPACE_SEPARATOR_ENCODED))
-            .withEndpoints(ImmutableList.copyOf(supportedEndpoints()));
+            .withEndpoints(ImmutableList.copyOf(supportedEndpoints(catalog)));
 
     // Advertise Idempotency-Key support to clients. Per the REST spec, presence of this field
     // signals that mutation endpoints honor Idempotency-Key; its value is the reuse window a
@@ -140,7 +141,7 @@ public class CatalogConfigHandler {
     return builder.build();
   }
 
-  private Set<Endpoint> supportedEndpoints() {
+  private Set<Endpoint> supportedEndpoints(CatalogEntity catalogEntity) {
     Set<Endpoint> endpoints = new LinkedHashSet<>();
     endpointContributors
         .handlesStream()
@@ -148,7 +149,7 @@ public class CatalogConfigHandler {
             Comparator.comparingInt(CatalogConfigHandler::priority)
                 .thenComparing(handle -> handle.getBean().getBeanClass().getName()))
         .map(Handle::get)
-        .map(CatalogConfigEndpointContributor::endpoints)
+        .map(contributor -> contributor.endpoints(catalogEntity))
         .forEach(endpoints::addAll);
     return endpoints;
   }

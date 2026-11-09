@@ -103,6 +103,7 @@ import org.apache.polaris.service.catalog.iceberg.CatalogHandlerUtils;
 import org.apache.polaris.service.catalog.iceberg.IcebergCatalogAdapter;
 import org.apache.polaris.service.catalog.iceberg.IcebergCatalogHandler;
 import org.apache.polaris.service.catalog.iceberg.IcebergCatalogHandlerFactory;
+import org.apache.polaris.service.catalog.iceberg.IcebergRemoteSigningConfigEndpoints;
 import org.apache.polaris.service.catalog.iceberg.IcebergRestCatalogEventServiceDelegator;
 import org.apache.polaris.service.catalog.iceberg.IcebergRestConfigEndpoints;
 import org.apache.polaris.service.catalog.iceberg.IcebergRestConfigurationEventServiceDelegator;
@@ -128,7 +129,12 @@ import org.apache.polaris.service.persistence.InMemoryPolarisMetaStoreManagerFac
 import org.apache.polaris.service.secrets.UnsafeInMemorySecretsManagerFactory;
 import org.apache.polaris.service.storage.PolarisStorageIntegrationProviderImpl;
 import org.apache.polaris.service.storage.S3CredentialVendingMechanisms;
+import org.apache.polaris.service.storage.StorageLocationTranslator;
 import org.apache.polaris.service.storage.StsCredentialVendingMechanism;
+import org.apache.polaris.service.storage.sign.RemoteSigner;
+import org.apache.polaris.service.storage.sign.RemoteSigningConfiguration;
+import org.apache.polaris.service.storage.sign.RemoteSigningDecisionCache;
+import org.apache.polaris.service.storage.sign.RemoteSigningTokenService;
 import org.apache.polaris.service.task.TaskExecutor;
 import org.mockito.Mockito;
 import software.amazon.awssdk.services.sts.StsClient;
@@ -474,6 +480,15 @@ public record TestServices(
 
       MutableAttributeMap eventAttributeMap = new MutableAttributeMap();
 
+      RemoteSigningConfiguration remoteSigningConfiguration =
+          Mockito.mock(RemoteSigningConfiguration.class);
+      Mockito.when(remoteSigningConfiguration.decisionCacheTtl()).thenReturn(Duration.ZERO);
+
+      @SuppressWarnings("unchecked")
+      Instance<RemoteSigner> remoteSigners = Mockito.mock(Instance.class);
+      @SuppressWarnings("unchecked")
+      Instance<StorageLocationTranslator> storageLocationTranslators = Mockito.mock(Instance.class);
+
       Supplier<CatalogConfigHandler> catalogConfigHandlerSupplier =
           () -> {
             @SuppressWarnings("unchecked")
@@ -487,6 +502,8 @@ public record TestServices(
                 new GenericTableConfigEndpoints(realmConfig);
             CatalogConfigEndpointContributor policyEndpoints =
                 new PolicyConfigEndpoints(realmConfig);
+            CatalogConfigEndpointContributor remoteSigningEndpoints =
+                new IcebergRemoteSigningConfigEndpoints(realmConfig);
             Mockito.when(configEndpointContributors.handlesStream())
                 .thenAnswer(invocation ->
                     Stream.of(
@@ -496,7 +513,9 @@ public record TestServices(
                         endpointContributorHandle(
                             IcebergRestConfigEndpoints.class, icebergRestEndpoints),
                         endpointContributorHandle(
-                            IcebergViewConfigEndpoints.class, icebergViewEndpoints)));
+                            IcebergViewConfigEndpoints.class, icebergViewEndpoints),
+                        endpointContributorHandle(
+                            IcebergRemoteSigningConfigEndpoints.class, remoteSigningEndpoints)));
             return new CatalogConfigHandler(
                 new DefaultCatalogPrefixParser(),
                 resolutionManifestFactory,
@@ -535,6 +554,11 @@ public record TestServices(
                         .accessDelegationModeResolver(
                             new DefaultAccessDelegationModeResolver(realmConfig))
                         .idempotencyRequestContext(idempotencyRequestContext)
+                        .remoteSigners(remoteSigners)
+                        .storageLocationTranslators(storageLocationTranslators)
+                        .remoteSigningTokenService(Mockito.mock(RemoteSigningTokenService.class))
+                        .remoteSigningDecisionCache(
+                            new RemoteSigningDecisionCache(remoteSigningConfiguration))
                         .build();
                   }
                 };

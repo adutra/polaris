@@ -29,6 +29,18 @@
       "result":  { "isAllowed": true }
     },
     {
+      "request": { "authzOp": "REMOTE_SIGN", "principal": { "name": "admin1" }, "target": "TABLE_LIKE:POLARIS/catalog1/namespace1/table1" },
+      "result":  { "isAllowed": true }
+    },
+    {
+      "request": { "authzOp": "REMOTE_SIGN_READ", "principal": { "name": "admin1" }, "target": "TABLE_LIKE:POLARIS/catalog1/namespace1/table1" },
+      "result":  { "isAllowed": true }
+    },
+    {
+      "request": { "authzOp": "REMOTE_SIGN_WRITE", "principal": { "name": "admin1" }, "target": "TABLE_LIKE:POLARIS/catalog1/namespace1/table1" },
+      "result":  { "isAllowed": true }
+    },
+    {
       "request": { "authzOp": "REPORT_READ_METRICS", "principal": { "name": "admin1" }, "target": "TABLE_LIKE:POLARIS/catalog1/namespace1/table1" },
       "result":  { "isAllowed": true }
     },
@@ -159,6 +171,14 @@
     {
       "request": { "authzOp": "LOAD_TABLE", "principal": { "name": "structuremanager1" }, "target": "TABLE_LIKE:POLARIS/catalog1/namespace1/table1" },
       "result":  { "isAllowed": true }
+    },
+    {
+      "request": { "authzOp": "REMOTE_SIGN", "principal": { "name": "datawriter1" }, "target": "TABLE_LIKE:POLARIS/catalog1/namespace1/table1" },
+      "result":  { "isAllowed": false }
+    },
+    {
+      "request": { "authzOp": "REMOTE_SIGN_WRITE", "principal": { "name": "datawriter1" }, "target": "TABLE_LIKE:POLARIS/catalog1/namespace1/table1" },
+      "result":  { "isAllowed": false }
     }
   ]
 }

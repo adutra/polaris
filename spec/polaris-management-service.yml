@@ -1596,6 +1596,7 @@ components:
         - TABLE_REMOVE_STATISTICS
         - TABLE_REMOVE_PARTITION_SPECS
         - TABLE_MANAGE_STRUCTURE
+        - TABLE_REMOTE_SIGN
 
     SemanticModelPrivilege:
       type: string
@@ -1679,6 +1680,7 @@ components:
         - TABLE_REMOVE_STATISTICS
         - TABLE_REMOVE_PARTITION_SPECS
         - TABLE_MANAGE_STRUCTURE
+        - TABLE_REMOTE_SIGN
 
     CatalogPrivilege:
       type: string
@@ -1743,6 +1745,7 @@ components:
         - TABLE_REMOVE_STATISTICS
         - TABLE_REMOVE_PARTITION_SPECS
         - TABLE_MANAGE_STRUCTURE
+        - TABLE_REMOTE_SIGN
 
     AddGrantRequest:
       type: object

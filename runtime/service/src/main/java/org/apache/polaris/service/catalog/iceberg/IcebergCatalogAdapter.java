@@ -42,11 +42,13 @@ import org.apache.iceberg.rest.requests.CreateViewRequest;
 import org.apache.iceberg.rest.requests.ImmutableCreateViewRequest;
 import org.apache.iceberg.rest.requests.RegisterTableRequest;
 import org.apache.iceberg.rest.requests.RegisterViewRequest;
+import org.apache.iceberg.rest.requests.RemoteSignRequest;
 import org.apache.iceberg.rest.requests.RenameTableRequest;
 import org.apache.iceberg.rest.requests.ReportMetricsRequest;
 import org.apache.iceberg.rest.requests.UpdateNamespacePropertiesRequest;
 import org.apache.iceberg.rest.requests.UpdateTableRequest;
 import org.apache.iceberg.rest.responses.LoadTableResponse;
+import org.apache.iceberg.rest.responses.RemoteSignResponse;
 import org.apache.polaris.core.StructuredLogKeys;
 import org.apache.polaris.core.auth.PolarisPrincipal;
 import org.apache.polaris.core.config.RealmConfig;
@@ -587,6 +589,27 @@ public class IcebergCatalogAdapter
         securityContext,
         prefix,
         catalog -> Response.ok(catalog.loadCredentials(tableIdentifier, refreshEndpoint)).build());
+  }
+
+  @Override
+  public Response signRequest(
+      String prefix,
+      String namespace,
+      String table,
+      RemoteSignRequest remoteSignRequest,
+      RealmContext realmContext,
+      SecurityContext securityContext) {
+    Namespace ns =
+        NamespaceUtils.splitNamespace(namespace, NamespaceUtils.DEFAULT_NAMESPACE_SEPARATOR);
+    TableIdentifier tableIdentifier = TableIdentifier.of(ns, table);
+    return withCatalog(
+        securityContext,
+        prefix,
+        catalog -> {
+          RemoteSignResponse response = catalog.signRequest(remoteSignRequest, tableIdentifier);
+          // Signed requests must never be cached by clients
+          return Response.ok(response).header(HttpHeaders.CACHE_CONTROL, "no-cache").build();
+        });
   }
 
   @Override

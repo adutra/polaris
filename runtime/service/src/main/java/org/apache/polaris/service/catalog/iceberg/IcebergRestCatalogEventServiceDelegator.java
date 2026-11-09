@@ -37,6 +37,7 @@ import org.apache.iceberg.rest.requests.CreateTableRequest;
 import org.apache.iceberg.rest.requests.CreateViewRequest;
 import org.apache.iceberg.rest.requests.RegisterTableRequest;
 import org.apache.iceberg.rest.requests.RegisterViewRequest;
+import org.apache.iceberg.rest.requests.RemoteSignRequest;
 import org.apache.iceberg.rest.requests.RenameTableRequest;
 import org.apache.iceberg.rest.requests.ReportMetricsRequest;
 import org.apache.iceberg.rest.requests.UpdateNamespacePropertiesRequest;
@@ -1141,5 +1142,18 @@ public class IcebergRestCatalogEventServiceDelegator
                   .build()));
     }
     return resp;
+  }
+
+  @Override
+  public Response signRequest(
+      String prefix,
+      String namespace,
+      String table,
+      RemoteSignRequest remoteSignRequest,
+      RealmContext realmContext,
+      SecurityContext securityContext) {
+    // No events for remote signing - just delegate to the underlying implementation
+    return delegate.signRequest(
+        prefix, namespace, table, remoteSignRequest, realmContext, securityContext);
   }
 }

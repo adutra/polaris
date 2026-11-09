@@ -31,6 +31,7 @@ import org.apache.polaris.core.catalog.FederatedCatalogFactory;
 import org.apache.polaris.core.catalog.LocalCatalogFactory;
 import org.apache.polaris.core.collection.MutableAttributeMap;
 import org.apache.polaris.core.context.CallContext;
+import org.apache.polaris.core.context.RequestIdSupplier;
 import org.apache.polaris.core.credentials.PolarisCredentialManager;
 import org.apache.polaris.core.persistence.PolarisMetaStoreManager;
 import org.apache.polaris.core.persistence.resolver.ResolutionManifestFactory;
@@ -41,6 +42,10 @@ import org.apache.polaris.service.catalog.io.StorageAccessConfigProvider;
 import org.apache.polaris.service.config.ReservedProperties;
 import org.apache.polaris.service.idempotency.IdempotencyRequestContext;
 import org.apache.polaris.service.metrics.IcebergMetricsReporter;
+import org.apache.polaris.service.storage.StorageLocationTranslator;
+import org.apache.polaris.service.storage.sign.RemoteSigner;
+import org.apache.polaris.service.storage.sign.RemoteSigningDecisionCache;
+import org.apache.polaris.service.storage.sign.RemoteSigningTokenService;
 
 @RequestScoped
 public class IcebergCatalogHandlerFactory {
@@ -62,6 +67,11 @@ public class IcebergCatalogHandlerFactory {
   @Inject Clock clock;
   @Inject AccessDelegationModeResolver accessDelegationModeResolver;
   @Inject IdempotencyRequestContext idempotencyRequestContext;
+  @Inject @Any Instance<RemoteSigner> remoteSigners;
+  @Inject @Any Instance<StorageLocationTranslator> storageLocationTranslators;
+  @Inject RemoteSigningTokenService remoteSigningTokenService;
+  @Inject RemoteSigningDecisionCache remoteSigningDecisionCache;
+  @Inject RequestIdSupplier requestIdSupplier;
 
   @Inject
   @Identifier("event-attribute-map")
@@ -89,6 +99,11 @@ public class IcebergCatalogHandlerFactory {
         .clock(clock)
         .accessDelegationModeResolver(accessDelegationModeResolver)
         .idempotencyRequestContext(idempotencyRequestContext)
+        .remoteSigners(remoteSigners)
+        .storageLocationTranslators(storageLocationTranslators)
+        .remoteSigningTokenService(remoteSigningTokenService)
+        .remoteSigningDecisionCache(remoteSigningDecisionCache)
+        .requestIdSupplier(requestIdSupplier)
         .build();
   }
 }

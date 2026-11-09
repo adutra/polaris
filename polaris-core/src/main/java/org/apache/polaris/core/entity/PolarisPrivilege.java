@@ -280,6 +280,7 @@ public enum PolarisPrivilege {
       List.of(PolarisEntitySubType.ICEBERG_TABLE, PolarisEntitySubType.GENERIC_TABLE),
       PolarisEntityType.CATALOG_ROLE),
   CATALOG_READ_CONFIG(111, PolarisEntityType.CATALOG),
+  TABLE_REMOTE_SIGN(112, PolarisEntityType.TABLE_LIKE, PolarisEntitySubType.ICEBERG_TABLE),
   ;
 
   /**

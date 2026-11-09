@@ -44,10 +44,10 @@ import org.apache.iceberg.types.Types;
 import org.apache.polaris.core.PolarisCallContext;
 import org.apache.polaris.core.PolarisDiagnostics;
 import org.apache.polaris.core.admin.model.AuthenticationParameters;
+import org.apache.polaris.core.admin.model.AwsStorageConfigInfo;
 import org.apache.polaris.core.admin.model.ConnectionConfigInfo;
 import org.apache.polaris.core.admin.model.CreateCatalogRequest;
 import org.apache.polaris.core.admin.model.ExternalCatalog;
-import org.apache.polaris.core.admin.model.FileStorageConfigInfo;
 import org.apache.polaris.core.admin.model.IcebergRestConnectionConfigInfo;
 import org.apache.polaris.core.admin.model.OAuthClientCredentialsParameters;
 import org.apache.polaris.core.admin.model.PrincipalWithCredentials;
@@ -100,6 +100,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.TestInfo;
 import org.mockito.Mockito;
 import software.amazon.awssdk.services.sts.StsClient;
+import software.amazon.awssdk.services.sts.model.AssumeRoleRequest;
+import software.amazon.awssdk.services.sts.model.AssumeRoleResponse;
+import software.amazon.awssdk.services.sts.model.Credentials;
 
 /** Base class for shared test setup logic used by various Polaris authz-related tests. */
 public abstract class PolarisAuthzTestBase {
@@ -191,21 +194,21 @@ public abstract class PolarisAuthzTestBase {
 
   @BeforeAll
   public static void setUpMocks() {
-    StsClient stsClient = Mockito.mock(StsClient.class);
-    S3CredentialVendingMechanisms mechanisms =
-        new S3CredentialVendingMechanisms(
-            Map.of(
-                "STS",
-                new StsCredentialVendingMechanism(
-                    destination -> stsClient, Optional.empty(), null, null)));
-    PolarisStorageIntegrationProviderImpl mock =
-        new PolarisStorageIntegrationProviderImpl(
-            mechanisms,
-            () -> GoogleCredentials.create(new AccessToken("abc", new Date())),
-            null,
-            null);
-    QuarkusMock.installMockForType(mock, PolarisStorageIntegrationProviderImpl.class);
+    stsClient = Mockito.mock(StsClient.class);
+    // Configure the STS mock to return proper credentials for S3 storage tests
+    Mockito.when(stsClient.assumeRole(Mockito.any(AssumeRoleRequest.class)))
+        .thenReturn(
+            AssumeRoleResponse.builder()
+                .credentials(
+                    Credentials.builder()
+                        .accessKeyId("test-access-key")
+                        .secretAccessKey("test-secret-key")
+                        .sessionToken("test-session-token")
+                        .build())
+                .build());
   }
+
+  private static StsClient stsClient;
 
   private static final AtomicInteger REALM_COUNTER = new AtomicInteger();
 
@@ -221,6 +224,22 @@ public abstract class PolarisAuthzTestBase {
     bootstrapRealm(realmContext.getRealmIdentifier());
 
     QuarkusMock.installMockForType(realmContext, RealmContext.class);
+
+    S3CredentialVendingMechanisms mechanisms =
+        new S3CredentialVendingMechanisms(
+            Map.of(
+                "STS",
+                new StsCredentialVendingMechanism(
+                    destination -> stsClient, Optional.empty(), null, realmConfig)));
+    PolarisStorageIntegrationProviderImpl storageIntegrationProvider =
+        new PolarisStorageIntegrationProviderImpl(
+            mechanisms,
+            () -> GoogleCredentials.create(new AccessToken("abc", new Date())),
+            null,
+            realmConfig);
+    QuarkusMock.installMockForType(
+        storageIntegrationProvider, PolarisStorageIntegrationProviderImpl.class);
+
     polarisContext = callContext.getPolarisCallContext();
 
     polarisAuthorizer = new PolarisAuthorizerImpl();
@@ -248,18 +267,23 @@ public abstract class PolarisAuthzTestBase {
             polarisAuthorizer,
             reservedProperties);
 
-    String storageLocation = "file:///tmp/authz";
-    String storageLocationForFederatedCatalog = "file:///tmp/authz_federated";
-    FileStorageConfigInfo storageConfigModel =
-        FileStorageConfigInfo.builder()
-            .setStorageType(StorageConfigInfo.StorageTypeEnum.FILE)
-            .setAllowedLocations(List.of(storageLocation, "file:///tmp/authz"))
+    String storageLocation = "s3://my-bucket/authz";
+    String storageLocationForFederatedCatalog = "s3://my-bucket/authz-federated";
+    StorageConfigInfo storageConfigModel =
+        AwsStorageConfigInfo.builder()
+            .setRoleArn("arn:aws:iam::012345678901:role/my-role")
+            .setExternalId("externalId")
+            .setUserArn("aws::a:user:arn")
+            .setStorageType(StorageConfigInfo.StorageTypeEnum.S3)
+            .setAllowedLocations(List.of(storageLocation))
             .build();
-    FileStorageConfigInfo storageConfigModelForFederatedCatalog =
-        FileStorageConfigInfo.builder()
-            .setStorageType(StorageConfigInfo.StorageTypeEnum.FILE)
-            .setAllowedLocations(
-                List.of(storageLocationForFederatedCatalog, "file:///tmp/authz_federated"))
+    StorageConfigInfo storageConfigModelForFederatedCatalog =
+        AwsStorageConfigInfo.builder()
+            .setRoleArn("arn:aws:iam::012345678901:role/my-role2")
+            .setExternalId("externalId")
+            .setUserArn("aws::a:user:arn")
+            .setStorageType(StorageConfigInfo.StorageTypeEnum.S3)
+            .setAllowedLocations(List.of(storageLocationForFederatedCatalog))
             .build();
     ConnectionConfigInfo connectionConfigInfo =
         IcebergRestConnectionConfigInfo.builder(
@@ -384,7 +408,7 @@ public abstract class PolarisAuthzTestBase {
     genericTableCatalog.createGenericTable(
         TABLE_NS1_1_GENERIC,
         "format",
-        "file:///tmp/authz/ns1/layer1_table_generic",
+        "s3://my-bucket/authz/ns1/layer1_table_generic",
         "doc",
         Map.of());
 

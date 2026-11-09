@@ -116,9 +116,10 @@ To grant the full set of privileges (drop, list, read, write, etc.) on an object
 | TABLE_READ_DATA | Enables reading data from the table by receiving short-lived read-only storage credentials from the catalog. |
 | TABLE_WRITE_DATA | Enables writing data to the table by receiving short-lived read+write storage credentials from the catalog. |
 | TABLE_READ_METRICS | Enables reading table scan and commit metrics reports. Does not grant access to table data. Can be granted on any table, but metrics reports are currently only produced for Iceberg tables. |
-| TABLE_FULL_METADATA | Grants all table privileges, except TABLE_READ_DATA and TABLE_WRITE_DATA, which need to be granted individually. |
+| TABLE_FULL_METADATA | Grants all table privileges, except TABLE_READ_DATA, TABLE_WRITE_DATA and TABLE_REMOTE_SIGN, which need to be granted individually. |
 | TABLE_ATTACH_POLICY | Enables attaching policy to a table. |
 | TABLE_DETACH_POLICY | Enables detaching policy from a table. |
+| TABLE_REMOTE_SIGN | Enables remote signing of storage requests for a table. TABLE_READ_DATA and/or TABLE_WRITE_DATA must also be granted individually. |
 
 ### View privileges
 
@@ -157,7 +158,7 @@ keys, or other secrets in table or view properties.
 | Privilege | Description |
 | -----------------------| ----------- |
 | CATALOG_MANAGE_ACCESS | Includes the ability to grant or revoke privileges on objects in a catalog to catalog roles, and the ability to grant or revoke catalog roles to or from principal roles. |
-| CATALOG_MANAGE_CONTENT | Enables full management of content for the catalog. This privilege encompasses the following privileges:<ul><li>CATALOG_MANAGE_METADATA</li><li>TABLE_FULL_METADATA</li><li>NAMESPACE_FULL_METADATA</li><li>VIEW_FULL_METADATA</li><li>TABLE_WRITE_DATA</li><li>TABLE_READ_DATA</li><li>TABLE_READ_METRICS</li><li>CATALOG_READ_PROPERTIES</li><li>CATALOG_WRITE_PROPERTIES</li><li>CATALOG_READ_CONFIG</li></ul> |
+| CATALOG_MANAGE_CONTENT | Enables full management of content for the catalog. This privilege encompasses the following privileges:<ul><li>CATALOG_MANAGE_METADATA</li><li>TABLE_FULL_METADATA</li><li>NAMESPACE_FULL_METADATA</li><li>VIEW_FULL_METADATA</li><li>TABLE_WRITE_DATA</li><li>TABLE_READ_DATA</li><li>TABLE_READ_METRICS</li><li>TABLE_REMOTE_SIGN</li><li>CATALOG_READ_PROPERTIES</li><li>CATALOG_WRITE_PROPERTIES</li><li>CATALOG_READ_CONFIG</li></ul> |
 | CATALOG_MANAGE_METADATA | Enables full management of the catalog, catalog roles, namespaces, and tables.  |
 | CATALOG_READ_CONFIG | Enables calling the Iceberg REST catalog configuration endpoint (`GET /v1/config`) when `polaris.features."ENFORCE_CATALOG_CONFIG_AUTHORIZATION"` is true (default false). Grant this privilege on the catalog. It is also implied by any catalog-content privilege (namespace, table, or view privileges) granted at catalog level. Namespace- or table-scoped grants (for example `TABLE_WRITE_DATA` on one namespace) do not cover `GET /v1/config` and return 403 once enforcement is on. Ranger currently maps `GET_CATALOG_CONFIG` to `catalog-properties-read`; do not enable the enforcement flag for Ranger until a dedicated `catalog-config-read` access type exists (or accept that coarse mapping). The same catalog-level content grant (for example `TABLE_READ_DATA`) allows `GET /v1/config` under internal RBAC and is denied under Ranger, which only honors `catalog-properties-read`. `CATALOG_READ_CONFIG` does not apply under Ranger. |
 | CATALOG_READ_PROPERTIES | Enables listing catalogs and reading properties of the catalog. |

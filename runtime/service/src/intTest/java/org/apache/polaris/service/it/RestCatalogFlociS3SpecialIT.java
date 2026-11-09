@@ -42,6 +42,7 @@ import org.apache.iceberg.FileFormat;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.polaris.core.admin.model.AwsStorageConfigInfo;
+import org.apache.polaris.core.config.FeatureConfiguration;
 import org.apache.polaris.service.catalog.AccessDelegationMode;
 import org.apache.polaris.service.it.ext.PolarisIntegrationTestExtension;
 import org.apache.polaris.test.commons.FlociAwsProfile;
@@ -201,13 +202,13 @@ public class RestCatalogFlociS3SpecialIT extends AbstractRestCatalogFlociS3Speci
   }
 
   /**
-   * A request that resolves to remote signing (not implemented) against a catalog that cannot vend
-   * credentials fails fast with a message telling the client what to do, instead of the opaque
-   * "Unsupported access delegation mode: REMOTE_SIGNING".
+   * A request that resolves to remote signing against a catalog that cannot vend credentials, and
+   * for which remote signing is not enabled, fails fast with a message telling how to enable remote
+   * signing.
    */
   @ParameterizedTest
   @ValueSource(strings = {"vended-credentials,remote-signing", "remote-signing"})
-  public void testLoadTableWithRemoteSigningRequestedWithoutStsFailsWithActionableMessage(
+  public void testLoadTableWithRemoteSigningRequestedWithoutStsFailsWhenRemoteSigningDisabled(
       String accessDelegationHeader) throws IOException {
     try (var restCatalog =
         createCatalog(
@@ -227,8 +228,8 @@ public class RestCatalogFlociS3SpecialIT extends AbstractRestCatalogFlociS3Speci
                   id,
                   "ALL",
                   Map.of("X-Iceberg-Access-Delegation", accessDelegationHeader)))
-          .hasMessageContaining("This catalog cannot vend credentials or sign requests")
-          .hasMessageContaining("request without X-Iceberg-Access-Delegation");
+          .hasMessageContaining("Remote signing is not enabled for this catalog")
+          .hasMessageContaining(FeatureConfiguration.REMOTE_SIGNING_ENABLED.catalogConfig());
     }
   }
 

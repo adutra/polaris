@@ -64,10 +64,8 @@ public class LocationRestrictions {
       @NonNull PolarisStorageConfigurationInfo storageConfigurationInfo,
       String parentLocation,
       String entityLocation) {
-    this.allowedLocations = storageConfigurationInfo.getAllowedLocations();
+    this(storageConfigurationInfo.getAllowedLocations(), parentLocation, entityLocation);
     allowedLocations.forEach(storageConfigurationInfo::validatePrefixForStorageType);
-    this.parentLocation = parentLocation;
-    this.entityLocation = entityLocation;
   }
 
   public LocationRestrictions(
@@ -77,6 +75,21 @@ public class LocationRestrictions {
 
   public LocationRestrictions(@NonNull PolarisStorageConfigurationInfo storageConfigurationInfo) {
     this(storageConfigurationInfo, null);
+  }
+
+  public LocationRestrictions(
+      @NonNull List<String> allowedLocations, String parentLocation, String entityLocation) {
+    this.allowedLocations = allowedLocations;
+    this.parentLocation = parentLocation;
+    this.entityLocation = entityLocation;
+  }
+
+  public LocationRestrictions(@NonNull List<String> allowedLocations, String parentLocation) {
+    this(allowedLocations, parentLocation, null);
+  }
+
+  public LocationRestrictions(@NonNull List<String> allowedLocations) {
+    this(allowedLocations, null);
   }
 
   /**

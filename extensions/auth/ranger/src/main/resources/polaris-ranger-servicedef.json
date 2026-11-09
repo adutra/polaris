@@ -94,6 +94,7 @@
           "table-drop",
           "table-data-read",
           "table-data-write",
+          "table-remote-sign",
           "table-properties-read",
           "table-properties-write",
           "table-properties-set",
@@ -184,6 +185,7 @@
           "table-list",
           "table-data-read",
           "table-data-write",
+          "table-remote-sign",
           "table-metadata-full",
           "table-properties-read",
           "table-properties-write",
@@ -424,6 +426,7 @@
         ]
       },
 
+      { "itemId": 70, "name": "table-remote-sign",            "label": "Table Remote Sign",            "category": "READ" },
       { "itemId": 56,  "name": "view-create",           "label": "View Create",           "category": "CREATE", "impliedGrants": [ "view-list" ] },
       { "itemId": 57,  "name": "view-drop",             "label": "View Drop",             "category": "DELETE" },
       { "itemId": 58,  "name": "view-list",             "label": "View List",             "category": "READ" },

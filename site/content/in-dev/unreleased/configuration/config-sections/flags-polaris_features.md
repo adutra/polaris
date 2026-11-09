@@ -524,6 +524,16 @@ If set to true, Polaris will attempt to delete view metadata files when a view i
 
 ---
 
+##### `polaris.features."REMOTE_SIGNING_ENABLED"`
+
+If true, the remote signing endpoint is enabled either globally, or for a specific catalog. Remote signing requires clients that support the remote-signing-config field of LoadTableResult: currently, only the Iceberg Java client 1.12 or later.
+
+- **Type:** `Boolean`
+- **Default:** `false`
+- **Catalog Config:** `polaris.config.remote-signing.enabled`
+
+---
+
 ##### `polaris.features."RESOLVE_CREDENTIALS_BY_STORAGE_NAME"`
 
 If set to true, resolve AWS credentials based on the storageName field of the storage configuration. When disabled, the default AWS credentials are used for all storages.

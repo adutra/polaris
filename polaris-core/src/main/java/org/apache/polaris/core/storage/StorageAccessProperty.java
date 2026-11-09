@@ -19,6 +19,7 @@
 package org.apache.polaris.core.storage;
 
 import org.apache.iceberg.aws.AwsClientProperties;
+import org.apache.iceberg.aws.s3.S3FileIOProperties;
 import org.apache.iceberg.azure.AzureProperties;
 import org.apache.iceberg.gcp.GCPProperties;
 import org.jspecify.annotations.Nullable;
@@ -78,6 +79,12 @@ public enum StorageAccessProperty {
       AwsClientProperties.REFRESH_CREDENTIALS_ENDPOINT,
       "catalog endpoint the client can call to refresh vended credentials before they expire",
       false,
+      false,
+      StorageType.AWS),
+  AWS_REMOTE_SIGNING_ENABLED(
+      Boolean.class,
+      S3FileIOProperties.REMOTE_SIGNING_ENABLED,
+      "set to true when the client must use remote signing for S3 requests",
       false,
       StorageType.AWS),
 
