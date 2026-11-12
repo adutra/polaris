@@ -27,6 +27,7 @@ import static org.apache.polaris.persistence.nosql.api.cache.CacheSizing.DEFAULT
 import static org.apache.polaris.persistence.nosql.api.cache.CacheSizing.DEFAULT_HEAP_FRACTION;
 import static org.apache.polaris.persistence.nosql.api.obj.ObjRef.objRef;
 import static org.apache.polaris.persistence.nosql.api.obj.ObjSerializationHelper.contextualReader;
+import static org.apache.polaris.persistence.nosql.api.obj.ObjSerializationHelper.readersFor;
 import static org.apache.polaris.persistence.nosql.api.obj.ObjType.CACHE_UNLIMITED;
 import static org.apache.polaris.persistence.nosql.api.obj.ObjType.NOT_CACHED;
 import static org.apache.polaris.persistence.nosql.api.obj.ObjTypes.objTypeById;
@@ -64,6 +65,7 @@ import org.apache.polaris.persistence.nosql.api.cache.ImmutableCacheSizing;
 import org.apache.polaris.persistence.nosql.api.obj.ImmutableObjRef;
 import org.apache.polaris.persistence.nosql.api.obj.Obj;
 import org.apache.polaris.persistence.nosql.api.obj.ObjRef;
+import org.apache.polaris.persistence.nosql.api.obj.ObjType;
 import org.apache.polaris.persistence.nosql.api.ref.ImmutableReference;
 import org.apache.polaris.persistence.nosql.api.ref.Reference;
 import org.apache.polaris.persistence.nosql.impl.indexes.ImmutableIndexStripeObj;
@@ -72,6 +74,7 @@ import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectReader;
 import tools.jackson.databind.ObjectWriter;
 import tools.jackson.dataformat.smile.SmileMapper;
 import tools.jackson.dataformat.smile.SmileWriteFeature;
@@ -252,7 +255,7 @@ class CaffeineCacheBackend implements CacheBackend {
     if (value.data == null) {
       return NOT_FOUND_OBJ_SENTINEL;
     }
-    return value.getObj();
+    return value.getObj(objTypeById(id.type()));
   }
 
   @Override
@@ -575,15 +578,13 @@ class CaffeineCacheBackend implements CacheBackend {
           + dataHeapSize;
     }
 
-    Obj getObj() {
+    Obj getObj(ObjType type) {
       var buf = ByteBuffer.wrap(objectMetadata);
       var kind = buf.get();
       checkState(kind != KIND_REFERENCE, "Cache value content is not an object");
       var relevantLen = readVarInt(buf);
       var id = buf.getLong();
       var typeIdLen = relevantLen - Long.BYTES;
-      var typeId = new String(objectMetadata, buf.position(), typeIdLen, UTF_8);
-      var type = objTypeById(typeId);
       buf.position(buf.position() + typeIdLen);
       var numParts = ((kind & KIND_FLAG_NUM_PARTS) == KIND_FLAG_NUM_PARTS) ? readVarInt(buf) : 1;
       var createdAtMicros = ((kind & KIND_FLAG_CREATED) == KIND_FLAG_CREATED) ? buf.getLong() : 0L;
@@ -603,7 +604,13 @@ class CaffeineCacheBackend implements CacheBackend {
             .index(ByteBuffer.wrap(data.clone()))
             .build();
       }
-      return contextualReader(SMILE_MAPPER, type, id, numParts, versionToken, createdAtMicros)
+      return contextualReader(
+              OBJ_READERS.get(type.targetClass()),
+              type,
+              id,
+              numParts,
+              versionToken,
+              createdAtMicros)
           .readValue(data);
     }
 
@@ -659,6 +666,8 @@ class CaffeineCacheBackend implements CacheBackend {
           .enable(DEFAULT_VIEW_INCLUSION)
           .build();
   private static final ObjectWriter OBJ_WRITER = SMILE_MAPPER.writer().withView(Object.class);
+
+  private static final ClassValue<ObjectReader> OBJ_READERS = readersFor(SMILE_MAPPER);
 
   static byte[] serializeObj(Obj obj) {
     return OBJ_WRITER.writeValueAsBytes(obj);
