@@ -20,6 +20,9 @@
 package org.apache.polaris.service.storage;
 
 import java.net.URI;
+import java.util.Set;
+import org.apache.iceberg.exceptions.ForbiddenException;
+import org.apache.iceberg.rest.requests.RemoteSignRequest;
 import org.apache.polaris.core.storage.StorageLocation;
 
 /**
@@ -31,6 +34,30 @@ public interface StorageLocationTranslator {
   interface Context {
     Context EMPTY = new Context() {};
   }
+
+  /**
+   * What a request to sign accesses.
+   *
+   * @param locations the locations of the objects that the request accesses
+   * @param createsObjects whether the request creates or overwrites objects, rather than only
+   *     reading or deleting them
+   */
+  record RequestTarget(Set<StorageLocation> locations, boolean createsObjects) {
+    public RequestTarget {
+      locations = Set.copyOf(locations);
+    }
+  }
+
+  /**
+   * Validates a request to sign, and returns what it accesses.
+   *
+   * @param request the request to sign
+   * @param context the translation {@link Context}
+   * @return what the request accesses
+   * @throws IllegalArgumentException if the request is malformed
+   * @throws ForbiddenException if the request cannot be signed
+   */
+  RequestTarget requestTarget(RemoteSignRequest request, Context context);
 
   /**
    * Translates the given HTTP(S) URL into a {@link StorageLocation}.

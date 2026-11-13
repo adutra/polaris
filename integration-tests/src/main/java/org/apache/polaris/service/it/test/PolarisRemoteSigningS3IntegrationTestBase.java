@@ -33,12 +33,16 @@ import com.google.common.collect.Lists;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import org.apache.iceberg.CatalogUtil;
 import org.apache.iceberg.DataFile;
+import org.apache.iceberg.FileScanTask;
+import org.apache.iceberg.HasTableOperations;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.TableMetadata;
@@ -52,7 +56,9 @@ import org.apache.iceberg.exceptions.BadRequestException;
 import org.apache.iceberg.exceptions.ForbiddenException;
 import org.apache.iceberg.io.CloseableIterable;
 import org.apache.iceberg.io.DataWriter;
+import org.apache.iceberg.io.FileIO;
 import org.apache.iceberg.io.OutputFile;
+import org.apache.iceberg.io.PositionOutputStream;
 import org.apache.iceberg.io.ResolvingFileIO;
 import org.apache.iceberg.parquet.Parquet;
 import org.apache.iceberg.rest.RESTCatalog;
@@ -468,6 +474,45 @@ public abstract class PolarisRemoteSigningS3IntegrationTestBase
       writeDataFile(restrictedTable);
       readDataFile(restrictedTable);
     }
+  }
+
+  /**
+   * Tests that a table can be purged like Spark does: the table is dropped without purging it, then
+   * its files are deleted with bulk deletes, using the FileIO obtained when the table was loaded.
+   */
+  @Test
+  public void testPurgeAfterDrop() throws IOException {
+    @SuppressWarnings("resource")
+    RESTCatalog catalog = catalog();
+    catalog.createNamespace(NS);
+    Table table = catalog.createTable(TABLE, SCHEMA);
+    writeDataFile(table);
+    table.refresh();
+    TableMetadata metadata = ((HasTableOperations) table).operations().current();
+    List<String> files = new ArrayList<>();
+    files.add(metadata.metadataFileLocation());
+    files.add(table.currentSnapshot().manifestListLocation());
+    try (CloseableIterable<FileScanTask> tasks = table.newScan().planFiles()) {
+      tasks.forEach(task -> files.add(task.file().location()));
+    }
+    @SuppressWarnings("resource")
+    FileIO io = table.io();
+    assertThat(files).allMatch(file -> io.newInputFile(file).exists());
+
+    assertThat(catalog.dropTable(TABLE, false)).isTrue();
+    CatalogUtil.dropTableData(io, metadata);
+
+    assertThat(files).noneMatch(file -> io.newInputFile(file).exists());
+    // The locations of the dropped table cannot be written
+    OutputFile outputFile = io.newOutputFile(table.locationProvider().newDataLocation("new"));
+    assertThatThrownBy(
+            () -> {
+              try (PositionOutputStream out = outputFile.create()) {
+                out.write(1);
+              }
+            })
+        .isInstanceOf(ForbiddenException.class)
+        .hasMessageContaining("can only be read or deleted");
   }
 
   private void writeDataFile(Table table) throws IOException {

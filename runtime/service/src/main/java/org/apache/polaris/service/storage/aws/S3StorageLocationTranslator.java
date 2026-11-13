@@ -22,7 +22,10 @@ package org.apache.polaris.service.storage.aws;
 import io.smallrye.common.annotation.Identifier;
 import jakarta.enterprise.context.ApplicationScoped;
 import java.net.URI;
+import java.util.HashSet;
 import java.util.Locale;
+import java.util.Set;
+import org.apache.iceberg.rest.requests.RemoteSignRequest;
 import org.apache.polaris.core.storage.StorageLocation;
 import org.apache.polaris.core.storage.aws.S3Location;
 import org.apache.polaris.service.storage.StorageLocationTranslator;
@@ -131,6 +134,34 @@ public class S3StorageLocationTranslator implements StorageLocationTranslator {
     }
 
     return new S3Location("s3://" + bucket + key);
+  }
+
+  /**
+   * Validates a request to sign against {@link S3SignRequestPolicy}, and returns what it accesses.
+   * A {@code DeleteObjects} request addresses its bucket, and accesses the objects whose keys are
+   * in its body.
+   */
+  @Override
+  public RequestTarget requestTarget(RemoteSignRequest request, Context context) {
+    S3SignRequestPolicy.RequestKind kind = S3SignRequestPolicy.validate(request);
+    StorageLocation location = translate(request.uri(), context);
+    String method = request.method().toUpperCase(Locale.ROOT);
+    if (kind == S3SignRequestPolicy.RequestKind.OBJECT) {
+      S3SignRequestPolicy.validateKey(location.toString());
+      return new RequestTarget(Set.of(location), method.equals("PUT") || method.equals("POST"));
+    }
+    // The location of the bucket: s3://bucket, or s3://bucket/
+    String bucket = location.toString().substring("s3://".length());
+    bucket = bucket.endsWith("/") ? bucket.substring(0, bucket.length() - 1) : bucket;
+    if (bucket.contains("/")) {
+      throw new IllegalArgumentException("Invalid DeleteObjects request URL: " + request.uri());
+    }
+    Set<StorageLocation> locations = new HashSet<>();
+    for (String key : S3SignRequestPolicy.deleteObjectsKeys(request.body())) {
+      S3SignRequestPolicy.validateKey(key);
+      locations.add(new S3Location("s3://" + bucket + "/" + key));
+    }
+    return new RequestTarget(locations, false);
   }
 
   private static boolean isAwsHost(String host) {

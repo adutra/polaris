@@ -119,7 +119,7 @@ To grant the full set of privileges (drop, list, read, write, etc.) on an object
 | TABLE_FULL_METADATA | Grants all table privileges, except TABLE_READ_DATA, TABLE_WRITE_DATA and TABLE_REMOTE_SIGN, which need to be granted individually. |
 | TABLE_ATTACH_POLICY | Enables attaching policy to a table. |
 | TABLE_DETACH_POLICY | Enables detaching policy from a table. |
-| TABLE_REMOTE_SIGN | Enables remote signing of storage requests for a table. TABLE_READ_DATA and/or TABLE_WRITE_DATA must also be granted individually. |
+| TABLE_REMOTE_SIGN | Enables [remote signing]({{% relref "../remote-signing" %}}) of storage requests for a table. TABLE_READ_DATA and/or TABLE_WRITE_DATA must also be granted individually. |
 
 ### View privileges
 

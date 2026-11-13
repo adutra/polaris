@@ -21,6 +21,7 @@ package org.apache.polaris.service.storage.sign;
 import java.util.Set;
 import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.polaris.core.storage.StorageLocation;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The table context recorded in a remote signing token with per-request authorization. It carries
@@ -29,20 +30,27 @@ import org.apache.polaris.core.storage.StorageLocation;
  * @param realmId the realm of the table
  * @param catalogName the catalog of the table
  * @param tableIdentifier the table
+ * @param tableId the ID of the table entity, to tell whether it still exists under another name
+ *     once its identifier no longer resolves; null for staged table creations, whose entity does
+ *     not exist yet
  * @param loadId an identifier of the request that issued the token, to correlate sign requests with
  *     it
  * @param locations the table's locations when the token was issued; used when the table entity does
  *     not record them (staged tables, and tables not committed since Polaris 1.3.0)
  * @param stagedCreate whether the token was issued for a staged table creation, in which case sign
- *     requests are authorized against the table's namespace
+ *     requests are authorized against the table's namespace until the table exists
+ * @param purgeAllowed whether the principal was allowed to drop the table with purge when the token
+ *     was issued, which allows it to read and delete the objects of the table once dropped
  */
 public record RemoteSigningContext(
     String realmId,
     String catalogName,
     TableIdentifier tableIdentifier,
+    @Nullable Long tableId,
     String loadId,
     Set<StorageLocation> locations,
-    boolean stagedCreate) {
+    boolean stagedCreate,
+    boolean purgeAllowed) {
 
   public RemoteSigningContext {
     locations = Set.copyOf(locations);

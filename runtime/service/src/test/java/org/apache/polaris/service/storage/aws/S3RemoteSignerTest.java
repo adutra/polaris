@@ -26,7 +26,9 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.google.common.hash.Hashing;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -34,6 +36,7 @@ import org.apache.iceberg.rest.requests.ImmutableRemoteSignRequest;
 import org.apache.iceberg.rest.requests.RemoteSignRequest;
 import org.apache.iceberg.rest.responses.RemoteSignResponse;
 import org.apache.polaris.service.storage.StorageConfiguration;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -109,7 +112,7 @@ class S3RemoteSignerTest {
     // Then
     assertThat(response).isNotNull();
     assertThat(response.uri()).isEqualTo(TEST_URI);
-    assertHeadersSigned(response);
+    assertHeadersSigned(response, requestBody);
   }
 
   @Test
@@ -132,7 +135,7 @@ class S3RemoteSignerTest {
     // Then
     assertThat(response).isNotNull();
     assertThat(response.uri()).isEqualTo(TEST_URI);
-    assertHeadersSigned(response);
+    assertHeadersSigned(response, requestBody);
   }
 
   @Test
@@ -155,7 +158,7 @@ class S3RemoteSignerTest {
     // Then
     assertThat(response).isNotNull();
     assertThat(response.uri()).isEqualTo(TEST_URI);
-    assertHeadersSigned(response);
+    assertHeadersSigned(response, requestBody);
   }
 
   @Test
@@ -289,11 +292,19 @@ class S3RemoteSignerTest {
   }
 
   private static void assertHeadersSigned(RemoteSignResponse response) {
+    assertHeadersSigned(response, null);
+  }
+
+  /** The body of a request, when there is one, is covered by the signature. */
+  private static void assertHeadersSigned(RemoteSignResponse response, @Nullable String body) {
     assertThat(response.headers()).isNotEmpty();
     assertThat(response.headers()).containsKey("X-Amz-Date"); // added by the signer
     assertThat(response.headers()).containsKey("x-amz-content-sha256");
     assertThat(response.headers().get("x-amz-content-sha256").getFirst())
-        .isEqualTo("UNSIGNED-PAYLOAD"); // Fixed when no request body
+        .isEqualTo(
+            body == null
+                ? "UNSIGNED-PAYLOAD"
+                : Hashing.sha256().hashString(body, StandardCharsets.UTF_8).toString());
     assertThat(response.headers()).containsKey("Authorization");
     assertThat(response.headers().get("Authorization")).hasSize(1);
     String authHeader = response.headers().get("Authorization").getFirst();

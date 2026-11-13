@@ -144,12 +144,17 @@ public class S3RemoteSigner implements RemoteSigner {
             .putProperty(AwsV4HttpSigner.SERVICE_SIGNING_NAME, S3Client.SERVICE_NAME)
             .putProperty(AwsV4HttpSigner.DOUBLE_URL_ENCODE, false)
             .putProperty(AwsV4HttpSigner.NORMALIZE_PATH, false)
-            .putProperty(AwsV4HttpSigner.CHUNK_ENCODING_ENABLED, false)
-            .putProperty(AwsV4HttpSigner.PAYLOAD_SIGNING_ENABLED, false);
+            .putProperty(AwsV4HttpSigner.CHUNK_ENCODING_ENABLED, false);
 
+    // Only the body of DeleteObjects requests is sent, and the objects it deletes are authorized
+    // individually: the signature covers it, so that the object store refuses any other body.
     String body = signingRequest.body();
     if (body != null) {
-      signRequest.payload(ContentStreamProvider.fromUtf8String(body));
+      signRequest
+          .payload(ContentStreamProvider.fromUtf8String(body))
+          .putProperty(AwsV4HttpSigner.PAYLOAD_SIGNING_ENABLED, true);
+    } else {
+      signRequest.putProperty(AwsV4HttpSigner.PAYLOAD_SIGNING_ENABLED, false);
     }
 
     SignedRequest signed = signer.sign(signRequest.build());

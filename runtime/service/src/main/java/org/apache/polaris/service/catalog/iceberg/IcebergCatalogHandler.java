@@ -169,6 +169,7 @@ import org.apache.polaris.service.storage.sign.RemoteSigningContext;
 import org.apache.polaris.service.storage.sign.RemoteSigningDecisionCache;
 import org.apache.polaris.service.storage.sign.RemoteSigningPermissions;
 import org.apache.polaris.service.storage.sign.RemoteSigningTokenService;
+import org.apache.polaris.service.storage.sign.RemoteSigningTokenService.VerifiedToken;
 import org.apache.polaris.service.types.NotificationRequest;
 import org.immutables.value.Value;
 import org.jspecify.annotations.NonNull;
@@ -1404,9 +1405,11 @@ public abstract class IcebergCatalogHandler extends CatalogHandler implements Au
             realmContext().getRealmIdentifier(),
             catalogName(),
             tableIdentifier,
+            stagedCreate ? null : tableEntityId(tableIdentifier, resolvedStoragePath),
             loadId(),
             normalizeLocations(tableLocations),
-            stagedCreate);
+            stagedCreate,
+            !stagedCreate && purgeAllowed(tableIdentifier));
     RemoteSigningConfig remoteSigningConfig =
         ImmutableRemoteSigningConfig.builder()
             .putProperties(
@@ -1426,6 +1429,47 @@ public abstract class IcebergCatalogHandler extends CatalogHandler implements Au
         .addConfig(LEGACY_S3_SIGNER_ENDPOINT, signerEndpoint)
         .addConfig(PYICEBERG_S3_SIGNER, PYICEBERG_S3_SIGNER_NAME)
         .withRemoteSigningConfig(remoteSigningConfig);
+  }
+
+  /**
+   * Returns whether the caller is allowed to drop the table with purge. Recorded in remote signing
+   * tokens, this decision authorizes reading and deleting the objects of the table once it is
+   * dropped, as its grants are dropped with it.
+   */
+  private boolean purgeAllowed(TableIdentifier tableIdentifier) {
+    PolarisResolutionManifest manifest = newResolutionManifest();
+    manifest.addPassthroughPath(
+        new ResolverPath(
+            PolarisCatalogHelpers.tableIdentifierToList(tableIdentifier),
+            PolarisEntityType.TABLE_LIKE,
+            true /* optional */));
+    AuthorizationRequest request =
+        new AuthorizationRequest(
+            polarisPrincipal(),
+            List.of(
+                new SingleTargetAuthorizationIntent(
+                    PolarisAuthorizableOperation.DROP_TABLE_WITH_PURGE,
+                    PolarisSecurableMapper.tableLike(catalogName(), tableIdentifier))));
+    AuthorizationState authorizationState = new AuthorizationState(manifest);
+    authorizer().resolveAuthorizationInputs(authorizationState, request);
+    return authorizer().authorize(authorizationState, request).isAllowed();
+  }
+
+  /**
+   * Returns the ID of the table entity, or null if it cannot be found. Right after a create or a
+   * register, the storage path resolved before the operation ends at the namespace, so the table is
+   * looked up.
+   */
+  private @Nullable Long tableEntityId(
+      TableIdentifier tableIdentifier, PolarisResolvedPathWrapper resolvedStoragePath) {
+    PolarisEntity leaf = resolvedStoragePath.getRawLeafEntity();
+    if (leaf == null || leaf.getType() != PolarisEntityType.TABLE_LIKE) {
+      PolarisResolvedPathWrapper persisted =
+          resolutionManifest.getPassthroughResolvedPath(
+              ResolvedPathKey.ofTableLike(tableIdentifier), PolarisEntitySubType.ICEBERG_TABLE);
+      leaf = persisted != null ? persisted.getRawLeafEntity() : null;
+    }
+    return leaf != null && leaf.getType() == PolarisEntityType.TABLE_LIKE ? leaf.getId() : null;
   }
 
   /**
@@ -2345,15 +2389,23 @@ public abstract class IcebergCatalogHandler extends CatalogHandler implements Au
     Identifier.Literal identifier = Identifier.Literal.of(storageType.name());
 
     StorageLocationTranslator translator = storageLocationTranslators().select(identifier).get();
-    StorageLocation targetLocation =
-        translator.translate(
-            signRequest.uri(),
+    StorageLocationTranslator.RequestTarget target =
+        translator.requestTarget(
+            signRequest,
             new S3StorageLocationTranslator.S3Context(
                 permissions.pathStyleAccess(), permissions.endpoint()));
+    if (target.createsObjects() && !permissions.canCreateObjects()) {
+      throw new ForbiddenException(
+          "Objects at the locations of dropped table %s can only be read or deleted",
+          tableIdentifier);
+    }
 
     new LocationRestrictions(
             permissions.allowedLocations().stream().map(StorageLocation::toString).toList())
-        .validate(realmConfig(), tableIdentifier, Set.of(targetLocation.toString()));
+        .validate(
+            realmConfig(),
+            tableIdentifier,
+            target.locations().stream().map(StorageLocation::toString).collect(Collectors.toSet()));
 
     RemoteSigner signer = remoteSigners().select(identifier).get();
     return signer.signRequest(signRequest, permissions.storageName());
@@ -2363,25 +2415,27 @@ public abstract class IcebergCatalogHandler extends CatalogHandler implements Au
    * Authorizes a sign request against the authenticated caller, possibly using a cached decision,
    * and returns the resulting permissions.
    *
-   * <p>The request carries a token issued for this table and principal, which provides the table
-   * context, unless the client is older than Iceberg 1.12. Requests without a token are authorized
-   * against the table as it is stored, so they cannot be for a table being created in a staged
-   * create transaction.
+   * <p>Requests for a table that exists are authorized against the table, whether or not they carry
+   * a token, which clients older than Iceberg 1.12 do not send. The token is only required for a
+   * table that does not exist: a table being created in a staged create transaction, or a table
+   * dropped since the token was issued. It must then not have expired.
    */
   private RemoteSigningPermissions authorizeSignRequest(
       RemoteSignRequest signRequest, TableIdentifier tableIdentifier, boolean write) {
 
     String tokenStr = signRequest.properties().get(RemoteSigningProperty.TOKEN.propertyName());
-    @Nullable RemoteSigningContext context =
+    @Nullable VerifiedToken token =
         tokenStr != null ? verifyToken(tokenStr, tableIdentifier) : null;
-
-    if (context != null) {
+    if (token != null) {
       // Correlates the log entries of this sign request with the request that issued the token
-      MDC.put(LOAD_REQUEST_ID_KEY, context.loadId());
-      if (context.stagedCreate()) {
-        return authorizeStagedCreateSignRequest(tableIdentifier, context);
-      }
+      MDC.put(LOAD_REQUEST_ID_KEY, token.context().loadId());
     }
+    // The locations recorded in the token only stand in for those of a table that does not record
+    // them, if the token is still valid and was issued for that table
+    @Nullable RemoteSigningContext tableContext =
+        token != null && !token.expired() && !token.context().stagedCreate()
+            ? token.context()
+            : null;
 
     RemoteSigningDecisionCache.Key key =
         new RemoteSigningDecisionCache.Key(
@@ -2391,19 +2445,111 @@ public abstract class IcebergCatalogHandler extends CatalogHandler implements Au
             catalogName(),
             tableIdentifier,
             write);
-    return remoteSigningDecisionCache()
-        .getOrAuthorize(key, () -> doAuthorizeSignRequest(tableIdentifier, write, context));
+    try {
+      return remoteSigningDecisionCache()
+          .getOrAuthorize(key, () -> doAuthorizeSignRequest(tableIdentifier, write, tableContext));
+    } catch (NoSuchTableException e) {
+      if (token == null) {
+        throw e;
+      }
+      if (token.expired()) {
+        throw new ForbiddenException("Invalid or expired remote signing token");
+      }
+      return token.context().stagedCreate()
+          ? authorizeStagedCreateSignRequest(tableIdentifier, token.context())
+          : authorizeDroppedTableSignRequest(tableIdentifier, token.context(), e);
+    }
   }
 
-  /** Verifies a remote signing token, and returns the table context it records. */
-  private RemoteSigningContext verifyToken(String tokenStr, TableIdentifier tableIdentifier) {
-    RemoteSigningContext context;
+  /**
+   * Authorizes a sign request for a table that existed when the token was issued, but no longer
+   * does: clients may read and delete the objects of a table after dropping it, e.g. to purge it.
+   *
+   * <p>The grants on the table were dropped with it, so the request is authorized by the decision
+   * recorded in the token when the same principal loaded the table: whether it was allowed to drop
+   * the table with purge. The request can only read or delete objects at the locations recorded in
+   * the token, which must not overlap a table or namespace that exists now.
+   *
+   * @param notFound the exception to throw if the table was not dropped, but replaced by another
+   *     entity, or if its namespace no longer exists
+   */
+  private RemoteSigningPermissions authorizeDroppedTableSignRequest(
+      TableIdentifier tableIdentifier,
+      RemoteSigningContext context,
+      NoSuchTableException notFound) {
+    Namespace namespace = tableIdentifier.namespace();
+    resolutionManifest = newResolutionManifest();
+    resolutionManifest.addPath(
+        new ResolverPath(Arrays.asList(namespace.levels()), PolarisEntityType.NAMESPACE));
+    resolutionManifest.addPassthroughPath(
+        new ResolverPath(
+            PolarisCatalogHelpers.tableIdentifierToList(tableIdentifier),
+            PolarisEntityType.TABLE_LIKE,
+            true /* optional */));
+    resolutionManifest.resolveAll();
+
+    PolarisResolvedPathWrapper resolvedNamespace =
+        resolutionManifest.getResolvedPath(ResolvedPathKey.ofNamespace(namespace), false);
+    if (resolvedNamespace == null
+        || resolutionManifest.getResolvedPath(
+                ResolvedPathKey.ofTableLike(tableIdentifier),
+                PolarisEntitySubType.ANY_SUBTYPE,
+                false)
+            != null) {
+      throw notFound;
+    }
+    CatalogEntity catalogEntity = getResolvedCatalogEntity();
+    checkRemoteSigningEnabled(catalogEntity);
+
+    // The table may have been renamed rather than dropped, in which case its current name must be
+    // used. Tokens without the table's ID cannot tell.
+    if (context.tableId() == null) {
+      throw notFound;
+    }
+    if (metaStoreManager()
+        .loadEntity(
+            callContext().getPolarisCallContext(),
+            catalogEntity.getId(),
+            context.tableId(),
+            PolarisEntityType.TABLE_LIKE)
+        .isSuccess()) {
+      throw new ForbiddenException(
+          "Table %s was renamed: it must be loaded again under its new name", tableIdentifier);
+    }
+    if (!context.purgeAllowed()) {
+      throw new ForbiddenException(
+          "Not authorized to access the objects of dropped table %s", tableIdentifier);
+    }
+
+    initializeCatalog();
+    if (baseCatalog instanceof LocalIcebergCatalog localCatalog) {
+      localCatalog.validateNoLocationOverlapForDroppedTable(
+          tableIdentifier,
+          context.locations().stream().map(StorageLocation::toString).collect(Collectors.toSet()),
+          resolvedNamespace);
+    }
+    LOGGER.debug(
+        "Authorizing a sign request for dropped table {} with its remote signing token",
+        tableIdentifier);
+    return RemoteSigningPermissions.builder()
+        .from(signingPermissions(context.locations(), resolvedNamespace))
+        .canCreateObjects(false)
+        .build();
+  }
+
+  /**
+   * Verifies a remote signing token, which must have been issued to the caller for this table, but
+   * may have expired.
+   */
+  private VerifiedToken verifyToken(String tokenStr, TableIdentifier tableIdentifier) {
+    VerifiedToken token;
     try {
-      context = remoteSigningTokenService().verifyToken(tokenStr, polarisPrincipal().getName());
+      token = remoteSigningTokenService().verifyToken(tokenStr, polarisPrincipal().getName());
     } catch (Exception e) {
       LOGGER.error("Failed to verify remote signing token", e);
       throw new ForbiddenException("Invalid or expired remote signing token");
     }
+    RemoteSigningContext context = token.context();
 
     if (!context.realmId().equals(realmContext().getRealmIdentifier())
         || !context.catalogName().equals(catalogName())
@@ -2418,7 +2564,7 @@ public abstract class IcebergCatalogHandler extends CatalogHandler implements Au
           context.tableIdentifier());
       throw new ForbiddenException("Remote signing token is for a different table");
     }
-    return context;
+    return token;
   }
 
   /**

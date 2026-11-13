@@ -77,9 +77,11 @@ class RemoteSigningTokenServiceTest {
           TEST_REALM,
           "test-catalog",
           TEST_TABLE,
+          42L,
           "load-1",
           Set.of(StorageLocation.of("s3://bucket/path/")),
-          false);
+          false,
+          true);
 
   private Clock clock;
   private RemoteSigningConfiguration configuration;
@@ -136,16 +138,19 @@ class RemoteSigningTokenServiceTest {
             TEST_REALM,
             "test-catalog",
             TEST_TABLE,
+            stagedCreate ? null : 42L,
             "load-1",
             Set.of(
                 StorageLocation.of("s3://bucket/path1"), StorageLocation.of("s3://bucket/path2")),
-            stagedCreate);
+            stagedCreate,
+            !stagedCreate);
 
     String token = service.issueToken(context, TEST_PRINCIPAL);
 
     // A JWS has 3 parts separated by dots
     assertThat(token.split("\\.")).hasSize(3);
-    assertThat(service.verifyToken(token, TEST_PRINCIPAL)).isEqualTo(context);
+    assertThat(service.verifyToken(token, TEST_PRINCIPAL))
+        .isEqualTo(new RemoteSigningTokenService.VerifiedToken(context, false));
   }
 
   @Test
@@ -180,9 +185,11 @@ class RemoteSigningTokenServiceTest {
                 TEST_REALM,
                 "test-catalog",
                 TEST_TABLE,
+                42L,
                 "load-1",
                 Set.of(StorageLocation.of("s3://other-bucket/")),
-                false),
+                false,
+                true),
             TEST_PRINCIPAL);
 
     // The payload of one token, with the signature of the other
@@ -213,9 +220,9 @@ class RemoteSigningTokenServiceTest {
     RemoteSigningTokenService expiredService =
         new RemoteSigningTokenService(configuration, expiredClock);
 
-    assertThatThrownBy(() -> expiredService.verifyToken(token, TEST_PRINCIPAL))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessage("Invalid or expired remote signing token");
+    // Expired tokens are reported as such, rather than rejected
+    assertThat(expiredService.verifyToken(token, TEST_PRINCIPAL))
+        .isEqualTo(new RemoteSigningTokenService.VerifiedToken(TEST_CONTEXT, true));
   }
 
   @ParameterizedTest
@@ -230,7 +237,8 @@ class RemoteSigningTokenServiceTest {
     RemoteSigningTokenService futureService =
         new RemoteSigningTokenService(configuration, futureClock);
 
-    assertThat(futureService.verifyToken(token, TEST_PRINCIPAL)).isEqualTo(TEST_CONTEXT);
+    assertThat(futureService.verifyToken(token, TEST_PRINCIPAL))
+        .isEqualTo(new RemoteSigningTokenService.VerifiedToken(TEST_CONTEXT, false));
   }
 
   @Test
@@ -277,7 +285,7 @@ class RemoteSigningTokenServiceTest {
             clock);
 
     // Tokens signed with the previous key remain valid
-    assertThat(service2.verifyToken(token, TEST_PRINCIPAL)).isEqualTo(TEST_CONTEXT);
+    assertThat(service2.verifyToken(token, TEST_PRINCIPAL).context()).isEqualTo(TEST_CONTEXT);
     // New tokens are signed with the current key, unknown to the previous service
     String newToken = service2.issueToken(TEST_CONTEXT, TEST_PRINCIPAL);
     assertThatThrownBy(() -> service1.verifyToken(newToken, TEST_PRINCIPAL))
@@ -294,7 +302,9 @@ class RemoteSigningTokenServiceTest {
         .hasSize(1)
         .containsKey("default");
     assertThat(
-            service.verifyToken(service.issueToken(TEST_CONTEXT, TEST_PRINCIPAL), TEST_PRINCIPAL))
+            service
+                .verifyToken(service.issueToken(TEST_CONTEXT, TEST_PRINCIPAL), TEST_PRINCIPAL)
+                .context())
         .isEqualTo(TEST_CONTEXT);
   }
 
@@ -319,7 +329,7 @@ class RemoteSigningTokenServiceTest {
             clock);
 
     String token = service.issueToken(TEST_CONTEXT, TEST_PRINCIPAL);
-    assertThat(service.verifyToken(token, TEST_PRINCIPAL)).isEqualTo(TEST_CONTEXT);
+    assertThat(service.verifyToken(token, TEST_PRINCIPAL).context()).isEqualTo(TEST_CONTEXT);
   }
 
   @Test

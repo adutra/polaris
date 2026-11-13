@@ -36,6 +36,15 @@ public interface RemoteSigningPermissions {
   /** The set of allowed locations that the user can access. */
   Set<StorageLocation> allowedLocations();
 
+  /**
+   * Whether requests can create or overwrite objects, rather than only read or delete them. Only
+   * objects of dropped tables cannot be created.
+   */
+  @Value.Default
+  default boolean canCreateObjects() {
+    return true;
+  }
+
   /** Whether request URIs use path-style access. Disabled by default. */
   @Value.Default
   default boolean pathStyleAccess() {

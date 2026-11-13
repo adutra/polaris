@@ -77,9 +77,11 @@ public class RemoteSigningExternalAuthorizerTest extends PolarisAuthzTestBase {
                 realmContextHolder.get().getRealmIdentifier(),
                 CATALOG_NAME,
                 table,
+                null,
                 "load-id",
                 Set.of(StorageLocation.of(location).normalize()),
-                stagedCreate),
+                stagedCreate,
+                false),
             principalEntity.getName());
     URI uri = URI.create(location);
     return ImmutableRemoteSignRequest.builder()

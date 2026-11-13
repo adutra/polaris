@@ -70,12 +70,22 @@ public class RemoteSigningTokenService {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(RemoteSigningTokenService.class);
 
+  /**
+   * A verified token.
+   *
+   * @param context the table context recorded in the token
+   * @param expired whether the token expired
+   */
+  public record VerifiedToken(RemoteSigningContext context, boolean expired) {}
+
   private static final String CLAIM_REALM_ID = "r";
   private static final String CLAIM_CATALOG_NAME = "c";
   private static final String CLAIM_TABLE_IDENTIFIER = "t";
+  private static final String CLAIM_TABLE_ID = "i";
   private static final String CLAIM_LOCATIONS = "l";
   private static final String CLAIM_PRINCIPAL_HASH = "h";
   private static final String CLAIM_STAGED_CREATE = "sc";
+  private static final String CLAIM_PURGE_ALLOWED = "p";
 
   /** The minimum key length for signing tokens with HMAC-SHA256. */
   private static final int MIN_KEY_BYTES = 32;
@@ -122,8 +132,14 @@ public class RemoteSigningTokenService {
                       .map(StorageLocation::toString)
                       .collect(Collectors.toList()))
               .claim(CLAIM_PRINCIPAL_HASH, principalHash(key, principalName));
+      if (context.tableId() != null) {
+        claimsBuilder.claim(CLAIM_TABLE_ID, context.tableId());
+      }
       if (context.stagedCreate()) {
         claimsBuilder.claim(CLAIM_STAGED_CREATE, true);
+      }
+      if (context.purgeAllowed()) {
+        claimsBuilder.claim(CLAIM_PURGE_ALLOWED, true);
       }
       if (configuration.tokenLifespan().isPositive()) {
         claimsBuilder.expirationTime(Date.from(now.plus(configuration.tokenLifespan())));
@@ -146,14 +162,17 @@ public class RemoteSigningTokenService {
    * <p>The key ID from the token header is validated against the configured keys. This ensures that
    * tokens signed with unknown keys are rejected.
    *
+   * <p>Expired tokens are not rejected, but reported as such: whether an expired token can still be
+   * used depends on what it is used for.
+   *
    * @param token the JWS token string
    * @param principalName the name of the authenticated principal, which must be the one the token
    *     was issued to
-   * @return the table context
-   * @throws IllegalArgumentException if the token is invalid, expired, signed with an unknown key,
-   *     or issued to another principal
+   * @return the table context, and whether the token expired
+   * @throws IllegalArgumentException if the token is invalid, signed with an unknown key, or issued
+   *     to another principal
    */
-  public RemoteSigningContext verifyToken(String token, String principalName) {
+  public VerifiedToken verifyToken(String token, String principalName) {
     try {
       SignedJWT jws = SignedJWT.parse(token);
 
@@ -174,7 +193,7 @@ public class RemoteSigningTokenService {
       }
 
       JWTClaimsSet claims = jws.getJWTClaimsSet();
-      checkExpiration(claims);
+      boolean expired = isExpired(claims);
 
       String principal = claims.getStringClaim(CLAIM_PRINCIPAL_HASH);
       if (principal == null
@@ -188,7 +207,9 @@ public class RemoteSigningTokenService {
       String catalogName = claims.getStringClaim(CLAIM_CATALOG_NAME);
       List<String> tableIdentifier = claims.getStringListClaim(CLAIM_TABLE_IDENTIFIER);
       List<String> locations = claims.getStringListClaim(CLAIM_LOCATIONS);
+      Long tableId = claims.getLongClaim(CLAIM_TABLE_ID);
       Boolean stagedCreate = claims.getBooleanClaim(CLAIM_STAGED_CREATE);
+      Boolean purgeAllowed = claims.getBooleanClaim(CLAIM_PURGE_ALLOWED);
       if (realmId == null
           || catalogName == null
           || tableIdentifier == null
@@ -197,28 +218,32 @@ public class RemoteSigningTokenService {
         throw new IllegalArgumentException("Token is missing required claims");
       }
 
-      return new RemoteSigningContext(
-          realmId,
-          catalogName,
-          TableIdentifier.of(tableIdentifier.toArray(new String[0])),
-          claims.getJWTID(),
-          locations.stream().map(StorageLocation::of).collect(Collectors.toSet()),
-          Boolean.TRUE.equals(stagedCreate));
+      return new VerifiedToken(
+          new RemoteSigningContext(
+              realmId,
+              catalogName,
+              TableIdentifier.of(tableIdentifier.toArray(new String[0])),
+              tableId,
+              claims.getJWTID(),
+              locations.stream().map(StorageLocation::of).collect(Collectors.toSet()),
+              Boolean.TRUE.equals(stagedCreate),
+              Boolean.TRUE.equals(purgeAllowed)),
+          expired);
 
     } catch (ParseException | JOSEException e) {
       throw new IllegalArgumentException("Failed to parse remote signing token", e);
     }
   }
 
-  private void checkExpiration(JWTClaimsSet claims) {
+  private boolean isExpired(JWTClaimsSet claims) {
     Date expirationTime = claims.getExpirationTime();
     if (expirationTime == null) {
       if (configuration.tokenLifespan().isPositive()) {
         throw new IllegalArgumentException("Token is missing expiration time");
       }
-    } else if (expirationTime.toInstant().isBefore(clock.instant())) {
-      throw new IllegalArgumentException("Invalid or expired remote signing token");
+      return false;
     }
+    return expirationTime.toInstant().isBefore(clock.instant());
   }
 
   /**
