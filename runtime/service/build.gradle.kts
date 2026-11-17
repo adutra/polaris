@@ -89,7 +89,9 @@ dependencies {
   implementation(libs.hadoop.client.api)
   implementation(libs.hadoop.client.runtime)
 
+  // TODO replace auth0 usages with nimbus-jose-jwt
   implementation(libs.auth0.jwt)
+  implementation(libs.nimbus.jose.jwt)
 
   implementation(libs.smallrye.common.annotation)
   implementation(libs.microprofile.fault.tolerance.api)
