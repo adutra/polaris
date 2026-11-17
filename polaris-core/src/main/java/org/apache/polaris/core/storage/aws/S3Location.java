@@ -68,6 +68,14 @@ public class S3Location extends StorageLocation {
   }
 
   @Override
+  public S3Location normalize() {
+    if (scheme.equals("s3a")) {
+      return new S3Location("s3:" + locationWithoutScheme);
+    }
+    return this;
+  }
+
+  @Override
   public int hashCode() {
     return withoutScheme().hashCode();
   }

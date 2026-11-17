@@ -161,5 +161,21 @@ public enum PolarisAuthorizableOperation {
   REMOVE_TABLE_PROPERTIES,
   SET_TABLE_STATISTICS,
   REMOVE_TABLE_STATISTICS,
-  REMOVE_TABLE_PARTITION_SPECS
+  REMOVE_TABLE_PARTITION_SPECS,
+  REMOTE_SIGN,
+  /** Signing a read request for a table's storage, when each sign request is authorized. */
+  REMOTE_SIGN_READ,
+  /** Signing a write request for a table's storage, when each sign request is authorized. */
+  REMOTE_SIGN_WRITE,
+  /**
+   * Signing a request for the storage of a table being created in a staged create transaction, when
+   * each sign request is authorized. Authorized on the table's namespace.
+   */
+  REMOTE_SIGN_STAGED_CREATE,
+  /**
+   * Reading and deleting the files of a table once it is dropped, as engines that purge tables
+   * themselves do after dropping them. Decided when the table is loaded, as its grants are dropped
+   * with it, and recorded in remote signing tokens.
+   */
+  DELETE_FILES_AFTER_DROP
 }

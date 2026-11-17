@@ -50,6 +50,7 @@ import static org.apache.polaris.core.auth.PolarisAuthorizableOperation.CREATE_T
 import static org.apache.polaris.core.auth.PolarisAuthorizableOperation.CREATE_VIEW;
 import static org.apache.polaris.core.auth.PolarisAuthorizableOperation.DELETE_CATALOG;
 import static org.apache.polaris.core.auth.PolarisAuthorizableOperation.DELETE_CATALOG_ROLE;
+import static org.apache.polaris.core.auth.PolarisAuthorizableOperation.DELETE_FILES_AFTER_DROP;
 import static org.apache.polaris.core.auth.PolarisAuthorizableOperation.DELETE_PRINCIPAL;
 import static org.apache.polaris.core.auth.PolarisAuthorizableOperation.DELETE_PRINCIPAL_ROLE;
 import static org.apache.polaris.core.auth.PolarisAuthorizableOperation.DETACH_POLICY_FROM_CATALOG;
@@ -101,6 +102,10 @@ import static org.apache.polaris.core.auth.PolarisAuthorizableOperation.REGISTER
 import static org.apache.polaris.core.auth.PolarisAuthorizableOperation.REGISTER_TABLE_WITH_READ_DELEGATION;
 import static org.apache.polaris.core.auth.PolarisAuthorizableOperation.REGISTER_TABLE_WITH_WRITE_DELEGATION;
 import static org.apache.polaris.core.auth.PolarisAuthorizableOperation.REGISTER_VIEW;
+import static org.apache.polaris.core.auth.PolarisAuthorizableOperation.REMOTE_SIGN;
+import static org.apache.polaris.core.auth.PolarisAuthorizableOperation.REMOTE_SIGN_READ;
+import static org.apache.polaris.core.auth.PolarisAuthorizableOperation.REMOTE_SIGN_STAGED_CREATE;
+import static org.apache.polaris.core.auth.PolarisAuthorizableOperation.REMOTE_SIGN_WRITE;
 import static org.apache.polaris.core.auth.PolarisAuthorizableOperation.REMOVE_TABLE_PARTITION_SPECS;
 import static org.apache.polaris.core.auth.PolarisAuthorizableOperation.REMOVE_TABLE_PROPERTIES;
 import static org.apache.polaris.core.auth.PolarisAuthorizableOperation.REMOVE_TABLE_SNAPSHOTS;
@@ -212,6 +217,7 @@ import static org.apache.polaris.core.entity.PolarisPrivilege.TABLE_LIST;
 import static org.apache.polaris.core.entity.PolarisPrivilege.TABLE_MANAGE_GRANTS_ON_SECURABLE;
 import static org.apache.polaris.core.entity.PolarisPrivilege.TABLE_READ_DATA;
 import static org.apache.polaris.core.entity.PolarisPrivilege.TABLE_READ_PROPERTIES;
+import static org.apache.polaris.core.entity.PolarisPrivilege.TABLE_REMOTE_SIGN;
 import static org.apache.polaris.core.entity.PolarisPrivilege.TABLE_REMOVE_PARTITION_SPECS;
 import static org.apache.polaris.core.entity.PolarisPrivilege.TABLE_REMOVE_PROPERTIES;
 import static org.apache.polaris.core.entity.PolarisPrivilege.TABLE_REMOVE_SNAPSHOTS;
@@ -507,6 +513,17 @@ record RbacOperationSemantics(
     register(SET_TABLE_STATISTICS, TABLE_SET_STATISTICS);
     register(REMOVE_TABLE_STATISTICS, TABLE_REMOVE_STATISTICS);
     register(REMOVE_TABLE_PARTITION_SPECS, TABLE_REMOVE_PARTITION_SPECS);
+
+    // Remote signing
+    register(REMOTE_SIGN, TABLE_REMOTE_SIGN);
+    // A single operation per sign request, so that external authorizers are queried once
+    register(REMOTE_SIGN_READ, EnumSet.of(TABLE_READ_DATA, TABLE_REMOTE_SIGN));
+    register(REMOTE_SIGN_WRITE, EnumSet.of(TABLE_WRITE_DATA, TABLE_REMOTE_SIGN));
+    // Like CREATE_TABLE_STAGED_WITH_WRITE_DELEGATION, on the namespace of the table being created
+    register(
+        REMOTE_SIGN_STAGED_CREATE, EnumSet.of(TABLE_CREATE, TABLE_WRITE_DATA, TABLE_REMOTE_SIGN));
+    // Like DROP_TABLE_WITH_PURGE, whose files the client deletes itself after the drop
+    register(DELETE_FILES_AFTER_DROP, EnumSet.of(TABLE_DROP, TABLE_WRITE_DATA));
 
     EnumSet<PolarisAuthorizableOperation> missing =
         EnumSet.allOf(PolarisAuthorizableOperation.class);

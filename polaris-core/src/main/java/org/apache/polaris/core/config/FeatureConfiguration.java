@@ -892,4 +892,15 @@ public class FeatureConfiguration<T> extends PolarisConfiguration<T> {
                   + "*_LIST on the parent receive a 403.")
           .defaultValue(false)
           .buildFeatureConfiguration();
+
+  public static final FeatureConfiguration<Boolean> REMOTE_SIGNING_ENABLED =
+      PolarisConfiguration.<Boolean>builder()
+          .key("REMOTE_SIGNING_ENABLED")
+          .catalogConfig("polaris.config.remote-signing.enabled")
+          .description(
+              "If true, the remote signing endpoint is enabled either globally, or for a specific catalog. "
+                  + "Remote signing requires clients that support the remote-signing-config field of "
+                  + "LoadTableResult: currently, only the Iceberg Java client 1.12 or later.")
+          .defaultValue(false)
+          .buildFeatureConfiguration();
 }

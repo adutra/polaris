@@ -87,6 +87,7 @@ public record RangerPolarisOperationSemantics(
   private static final String TABLE_WRITE_PROPERTIES = "table-properties-write";
   private static final String TABLE_READ_DATA = "table-data-read";
   private static final String TABLE_WRITE_DATA = "table-data-write";
+  private static final String TABLE_REMOTE_SIGN = "table-remote-sign";
   private static final String TABLE_ATTACH_POLICY = "table-policy-attach";
   private static final String TABLE_DETACH_POLICY = "table-policy-detach";
   private static final String TABLE_ASSIGN_UUID = "table-uuid-assign";
@@ -207,6 +208,28 @@ public record RangerPolarisOperationSemantics(
         PolarisAuthorizableOperation.LOAD_TABLE_WITH_WRITE_DELEGATION,
         new RangerPolarisOperationSemantics(
             toSet(TABLE_WRITE_DATA), null, ResolvedPathRooting.ROOT));
+    RBAC_SEMANTICS_BY_OPERATION.put(
+        PolarisAuthorizableOperation.REMOTE_SIGN,
+        new RangerPolarisOperationSemantics(
+            toSet(TABLE_REMOTE_SIGN), null, ResolvedPathRooting.ROOT));
+    RBAC_SEMANTICS_BY_OPERATION.put(
+        PolarisAuthorizableOperation.REMOTE_SIGN_READ,
+        new RangerPolarisOperationSemantics(
+            toSet(TABLE_READ_DATA, TABLE_REMOTE_SIGN), null, ResolvedPathRooting.ROOT));
+    RBAC_SEMANTICS_BY_OPERATION.put(
+        PolarisAuthorizableOperation.REMOTE_SIGN_WRITE,
+        new RangerPolarisOperationSemantics(
+            toSet(TABLE_WRITE_DATA, TABLE_REMOTE_SIGN), null, ResolvedPathRooting.ROOT));
+    RBAC_SEMANTICS_BY_OPERATION.put(
+        PolarisAuthorizableOperation.REMOTE_SIGN_STAGED_CREATE,
+        new RangerPolarisOperationSemantics(
+            Set.of(TABLE_CREATE, TABLE_WRITE_DATA, TABLE_REMOTE_SIGN),
+            null,
+            ResolvedPathRooting.ROOT));
+    RBAC_SEMANTICS_BY_OPERATION.put(
+        PolarisAuthorizableOperation.DELETE_FILES_AFTER_DROP,
+        new RangerPolarisOperationSemantics(
+            toSet(TABLE_DROP, TABLE_WRITE_DATA), null, ResolvedPathRooting.ROOT));
     RBAC_SEMANTICS_BY_OPERATION.put(
         PolarisAuthorizableOperation.UPDATE_TABLE,
         new RangerPolarisOperationSemantics(
