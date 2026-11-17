@@ -20,6 +20,7 @@ package org.apache.polaris.service.catalog.spi;
 
 import java.util.Set;
 import org.apache.iceberg.rest.Endpoint;
+import org.apache.polaris.core.entity.CatalogEntity;
 
 /**
  * Contributes endpoints advertised in catalog configuration responses.
@@ -28,5 +29,19 @@ import org.apache.iceberg.rest.Endpoint;
  */
 @FunctionalInterface
 public interface CatalogConfigEndpointContributor {
+
+  /** Returns the endpoints to advertise, regardless of the catalog. */
   Set<Endpoint> endpoints();
+
+  /**
+   * Returns the endpoints to advertise for the given catalog.
+   *
+   * <p>Implementations whose endpoints depend on catalog-level configuration should override this
+   * method. The default implementation delegates to {@link #endpoints()}.
+   *
+   * @param catalog the catalog for which the configuration is being requested
+   */
+  default Set<Endpoint> endpoints(CatalogEntity catalog) {
+    return endpoints();
+  }
 }

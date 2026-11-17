@@ -115,7 +115,7 @@ public class PolarisGenericTableCatalogHandlerAuthzTest extends PolarisAuthzTest
         .action(() ->
             newWrapper(Set.of(PRINCIPAL_ROLE1))
                 .createGenericTable(
-                    newtable, "format", "file:///tmp/authz/ns2/newtable", "doc", Map.of()))
+                    newtable, "format", "s3://my-bucket/authz/ns2/newtable", "doc", Map.of()))
         .cleanupAction(() -> newWrapper(Set.of(PRINCIPAL_ROLE2)).dropGenericTable(newtable))
         .shouldPassWith(PolarisPrivilege.TABLE_CREATE)
         .shouldPassWith(PolarisPrivilege.TABLE_FULL_METADATA)
@@ -170,7 +170,7 @@ public class PolarisGenericTableCatalogHandlerAuthzTest extends PolarisAuthzTest
                 .createGenericTable(
                     TABLE_NS1_1_GENERIC,
                     "format",
-                    "file:///tmp/authz/ns1/layer1_table_generic",
+                    "s3://my-bucket/authz/ns1/layer1_table_generic",
                     "doc",
                     Map.of()))
         .shouldPassWith(PolarisPrivilege.TABLE_DROP)
@@ -223,7 +223,7 @@ public class PolarisGenericTableCatalogHandlerAuthzTest extends PolarisAuthzTest
                 .createGenericTable(
                     TABLE_NS1_1_GENERIC,
                     "format",
-                    "file:///tmp/authz/ns1/layer1_table_generic",
+                    "s3://my-bucket/authz/ns1/layer1_table_generic",
                     "doc",
                     Map.of()))
         .shouldPassWith(PolarisPrivilege.TABLE_DROP)

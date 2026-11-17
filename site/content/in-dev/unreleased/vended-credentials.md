@@ -83,17 +83,18 @@ before the current ones expire, avoiding the need to re-load the table.
 
 `X-Iceberg-Access-Delegation` tells Polaris which access mechanisms the client supports. If the
 header is present but the catalog can provide none of the requested mechanisms, Polaris fails the
-request with `400 Bad Request` instead of returning the table without delegated access. The two
-cases are:
+request instead of returning the table without delegated access. The possible cases are:
 
 | Requested mechanism | When it cannot be satisfied | Response |
 |---|---|---|
 | `vended-credentials` | The catalog cannot vend credentials for the table's storage, for example an S3-compatible store configured with `stsUnavailable: true`. | `400` with message `Credential vending was requested for table <namespace.table>, but no credentials are available` |
-| `remote-signing`, alone or combined with `vended-credentials` when vending is not possible | Polaris does not implement remote signing. | `400` with message `This catalog cannot vend credentials or sign requests; request without X-Iceberg-Access-Delegation and configure storage credentials on the client` |
+| `remote-signing`, alone or combined with `vended-credentials` when vending is not possible | Remote signing (experimental) is not enabled for the catalog, through the `REMOTE_SIGNING_ENABLED` feature or the `polaris.config.remote-signing.enabled` catalog property. | `403` with message `Remote signing is not enabled for this catalog. ...` |
+| `remote-signing`, alone or combined with `vended-credentials` when vending is not possible | The catalog is an external catalog. | `403` with message `Remote signing is not enabled for external catalogs.` |
+| `remote-signing`, alone or combined with `vended-credentials` when vending is not possible | The table's storage is not S3; remote signing is only supported for S3. | `400` with message `Remote signing is not supported for storage type: <type>` |
 
-Polaris fails fast here on purpose. Both conditions are static properties of the catalog (its
-storage configuration, or a mechanism Polaris does not support), so a later request for the same
-table would not succeed either. A client that asks for delegation usually has no storage
+Polaris fails fast here on purpose. These conditions are static properties of the catalog (its
+storage configuration, or its configuration flags), so a later request for the same table would
+not succeed either. A client that asks for delegation usually has no storage
 credentials of its own, and a `200` response without credentials would only move the failure to
 the first data access, where it is much harder to diagnose.
 
@@ -131,3 +132,6 @@ Iceberg SDK each client uses.
 
 Polaris emits **all applicable forms simultaneously**, so no client-specific Polaris configuration
 is required to switch between the clients listed above.
+
+Remote signing (`X-Iceberg-Access-Delegation: remote-signing`, experimental) has stricter client
+requirements: see [Remote Signing]({{% relref "./remote-signing#client-support" %}}).

@@ -18,6 +18,7 @@
  */
 package org.apache.polaris.service.catalog.iceberg;
 
+import static org.apache.polaris.service.catalog.AccessDelegationMode.REMOTE_SIGNING;
 import static org.apache.polaris.service.catalog.AccessDelegationMode.VENDED_CREDENTIALS;
 
 import com.google.common.collect.ImmutableMap;
@@ -418,6 +419,37 @@ public abstract class AbstractIcebergCatalogHandlerAuthzTest extends PolarisAuth
   }
 
   @TestFactory
+  Stream<DynamicNode> testCreateTableDirectWithRemoteSigningPrivileges() {
+    assertSuccess(
+        newRootAdminService()
+            .grantPrivilegeOnCatalogToRole(
+                CATALOG_NAME, CATALOG_ROLE2, PolarisPrivilege.TABLE_DROP));
+    assertSuccess(
+        newRootAdminService()
+            .grantPrivilegeOnCatalogToRole(
+                CATALOG_NAME, CATALOG_ROLE2, PolarisPrivilege.TABLE_WRITE_DATA));
+
+    final TableIdentifier newtable = TableIdentifier.of(NS2, "newtable");
+    final CreateTableRequest createDirectRequest =
+        CreateTableRequest.builder().withName("newtable").withSchema(SCHEMA).build();
+
+    return authzTestsBuilder("createTableDirectWithRemoteSigning")
+        .action(() ->
+            newHandler(Set.of(PRINCIPAL_ROLE1))
+                .createTableDirect(
+                    NS2, createDirectRequest, EnumSet.of(REMOTE_SIGNING), Optional.empty()))
+        .cleanupAction(() -> newHandler(Set.of(PRINCIPAL_ROLE2)).dropTableWithPurge(newtable))
+        .shouldPassWith(
+            PolarisPrivilege.TABLE_CREATE,
+            PolarisPrivilege.TABLE_WRITE_DATA,
+            PolarisPrivilege.TABLE_REMOTE_SIGN)
+        .shouldPassWith(PolarisPrivilege.CATALOG_MANAGE_CONTENT)
+        .shouldFailWith(PolarisPrivilege.TABLE_CREATE, PolarisPrivilege.TABLE_WRITE_DATA)
+        .shouldFailWith(PolarisPrivilege.TABLE_CREATE, PolarisPrivilege.TABLE_REMOTE_SIGN)
+        .createTests();
+  }
+
+  @TestFactory
   Stream<DynamicNode> testCreateTableStagedPrivileges() {
     assertSuccess(
         newRootAdminService()
@@ -471,6 +503,34 @@ public abstract class AbstractIcebergCatalogHandlerAuthzTest extends PolarisAuth
                     Optional.empty()))
         .shouldPassWith(PolarisPrivilege.TABLE_CREATE, PolarisPrivilege.TABLE_WRITE_DATA)
         .shouldPassWith(PolarisPrivilege.CATALOG_MANAGE_CONTENT)
+        .createTests();
+  }
+
+  @TestFactory
+  Stream<DynamicNode> testCreateTableStagedWithRemoteSigningPrivileges() {
+    assertSuccess(
+        newRootAdminService()
+            .grantPrivilegeOnCatalogToRole(
+                CATALOG_NAME, CATALOG_ROLE2, PolarisPrivilege.TABLE_DROP));
+
+    final CreateTableRequest createStagedRequest =
+        CreateTableRequest.builder()
+            .withName("stagetable")
+            .withSchema(SCHEMA)
+            .stageCreate()
+            .build();
+
+    return authzTestsBuilder("createTableStagedWithRemoteSigning")
+        .action(() ->
+            newHandler(Set.of(PRINCIPAL_ROLE1))
+                .createTableStaged(
+                    NS2, createStagedRequest, EnumSet.of(REMOTE_SIGNING), Optional.empty()))
+        .shouldPassWith(
+            PolarisPrivilege.TABLE_CREATE,
+            PolarisPrivilege.TABLE_WRITE_DATA,
+            PolarisPrivilege.TABLE_REMOTE_SIGN)
+        .shouldPassWith(PolarisPrivilege.CATALOG_MANAGE_CONTENT)
+        .shouldFailWith(PolarisPrivilege.TABLE_CREATE, PolarisPrivilege.TABLE_WRITE_DATA)
         .createTests();
   }
 
@@ -831,6 +891,64 @@ public abstract class AbstractIcebergCatalogHandlerAuthzTest extends PolarisAuth
   }
 
   @TestFactory
+  Stream<DynamicNode> testRegisterTableWithRemoteSigning() {
+    assertSuccess(
+        newRootAdminService()
+            .grantPrivilegeOnCatalogToRole(
+                CATALOG_NAME, CATALOG_ROLE2, PolarisPrivilege.TABLE_DROP));
+    assertSuccess(
+        newRootAdminService()
+            .grantPrivilegeOnCatalogToRole(
+                CATALOG_NAME, CATALOG_ROLE2, PolarisPrivilege.TABLE_READ_PROPERTIES));
+
+    String metadataLocation =
+        newHandler()
+            .loadTable(
+                TABLE_NS1_1,
+                "all",
+                null,
+                EnumSet.noneOf(AccessDelegationMode.class),
+                Optional.empty())
+            .get()
+            .metadataLocation();
+    newHandler(Set.of(PRINCIPAL_ROLE2)).dropTableWithoutPurge(TABLE_NS1_1);
+
+    RegisterTableRequest registerRequest =
+        ImmutableRegisterTableRequest.builder()
+            .name(TABLE_NS1_1.name())
+            .metadataLocation(metadataLocation)
+            .build();
+
+    return authzTestsBuilder("registerTableWithRemoteSigning")
+        .action(() ->
+            newHandler(Set.of(PRINCIPAL_ROLE1))
+                .registerTable(NS1, registerRequest, EnumSet.of(REMOTE_SIGNING), Optional.empty()))
+        .cleanupAction(() -> newHandler(Set.of(PRINCIPAL_ROLE2)).dropTableWithoutPurge(TABLE_NS1_1))
+        .shouldPassWith(
+            PolarisPrivilege.TABLE_CREATE,
+            PolarisPrivilege.TABLE_READ_DATA,
+            PolarisPrivilege.TABLE_REMOTE_SIGN)
+        .shouldPassWith(
+            PolarisPrivilege.TABLE_CREATE,
+            PolarisPrivilege.TABLE_WRITE_DATA,
+            PolarisPrivilege.TABLE_REMOTE_SIGN)
+        .shouldPassWith(
+            PolarisPrivilege.TABLE_FULL_METADATA,
+            PolarisPrivilege.TABLE_READ_DATA,
+            PolarisPrivilege.TABLE_REMOTE_SIGN)
+        .shouldPassWith(
+            PolarisPrivilege.TABLE_FULL_METADATA,
+            PolarisPrivilege.TABLE_WRITE_DATA,
+            PolarisPrivilege.TABLE_REMOTE_SIGN)
+        .shouldPassWith(PolarisPrivilege.CATALOG_MANAGE_CONTENT)
+        .shouldFailWith(PolarisPrivilege.TABLE_CREATE, PolarisPrivilege.TABLE_READ_DATA)
+        // Metadata privileges do not imply TABLE_REMOTE_SIGN
+        .shouldFailWith(PolarisPrivilege.TABLE_FULL_METADATA, PolarisPrivilege.TABLE_WRITE_DATA)
+        .shouldFailWith(PolarisPrivilege.CATALOG_MANAGE_METADATA, PolarisPrivilege.TABLE_WRITE_DATA)
+        .createTests();
+  }
+
+  @TestFactory
   Stream<DynamicNode> testRegisterTableOverwriteWithWriteDelegation() {
     assertSuccess(
         newRootAdminService()
@@ -1069,6 +1187,41 @@ public abstract class AbstractIcebergCatalogHandlerAuthzTest extends PolarisAuth
                     TABLE_NS1A_2, "all", null, EnumSet.of(VENDED_CREDENTIALS), Optional.empty()))
         .shouldPassWith(PolarisPrivilege.TABLE_READ_DATA)
         .shouldPassWith(PolarisPrivilege.TABLE_WRITE_DATA)
+        .shouldPassWith(PolarisPrivilege.CATALOG_MANAGE_CONTENT)
+        .createTests();
+  }
+
+  @TestFactory
+  Stream<DynamicNode> testLoadTableWithRemoteSigningPrivileges() {
+    return authzTestsBuilder("loadTableWithRemoteSigning")
+        .action(() ->
+            newHandler()
+                .loadTable(TABLE_NS1A_2, "all", null, EnumSet.of(REMOTE_SIGNING), Optional.empty()))
+        .shouldPassWith(PolarisPrivilege.TABLE_READ_DATA, PolarisPrivilege.TABLE_REMOTE_SIGN)
+        .shouldPassWith(PolarisPrivilege.TABLE_WRITE_DATA, PolarisPrivilege.TABLE_REMOTE_SIGN)
+        .shouldPassWith(PolarisPrivilege.CATALOG_MANAGE_CONTENT)
+        .shouldFailWith(PolarisPrivilege.TABLE_READ_DATA)
+        .shouldFailWith(PolarisPrivilege.TABLE_WRITE_DATA)
+        .shouldFailWith(PolarisPrivilege.TABLE_REMOTE_SIGN)
+        // Metadata privileges do not imply TABLE_REMOTE_SIGN
+        .shouldFailWith(PolarisPrivilege.TABLE_FULL_METADATA, PolarisPrivilege.TABLE_READ_DATA)
+        .shouldFailWith(PolarisPrivilege.CATALOG_MANAGE_METADATA, PolarisPrivilege.TABLE_READ_DATA)
+        .createTests();
+  }
+
+  @TestFactory
+  Stream<DynamicNode> testLoadTableWithRemoteSigningIfStalePrivileges() {
+    return authzTestsBuilder("loadTableWithRemoteSigningIfStale")
+        .action(() ->
+            newHandler()
+                .loadTable(
+                    TABLE_NS1A_2,
+                    "all",
+                    IfNoneMatch.fromHeader("W/\"0:0\""),
+                    EnumSet.of(REMOTE_SIGNING),
+                    Optional.empty()))
+        .shouldPassWith(PolarisPrivilege.TABLE_READ_DATA, PolarisPrivilege.TABLE_REMOTE_SIGN)
+        .shouldPassWith(PolarisPrivilege.TABLE_WRITE_DATA, PolarisPrivilege.TABLE_REMOTE_SIGN)
         .shouldPassWith(PolarisPrivilege.CATALOG_MANAGE_CONTENT)
         .createTests();
   }

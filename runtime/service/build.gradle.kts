@@ -144,6 +144,11 @@ dependencies {
     exclude(group = "org.apache.iceberg", module = "iceberg-spark-extensions-3.5_2.12")
     exclude(group = "org.apache.spark", module = "spark-sql_2.12")
   }
+  // The remote signing tests of :polaris-tests write and read data files
+  intTestRuntimeOnly(platform(libs.iceberg.bom))
+  intTestRuntimeOnly("org.apache.iceberg:iceberg-data")
+  intTestRuntimeOnly("org.apache.iceberg:iceberg-orc")
+  intTestRuntimeOnly("org.apache.iceberg:iceberg-parquet")
 
   testImplementation(project(":polaris-api-management-model"))
   testImplementation(project(":polaris-relational-jdbc"))

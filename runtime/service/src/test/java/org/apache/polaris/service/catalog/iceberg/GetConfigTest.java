@@ -43,6 +43,7 @@ import org.apache.polaris.core.auth.AuthorizationRequest;
 import org.apache.polaris.core.auth.AuthorizationState;
 import org.apache.polaris.core.auth.PolarisAuthorizableOperation;
 import org.apache.polaris.core.auth.PolarisAuthorizer;
+import org.apache.polaris.core.config.FeatureConfiguration;
 import org.apache.polaris.core.rest.GenericTableEndpoints;
 import org.apache.polaris.service.TestServices;
 import org.apache.polaris.service.catalog.policy.PolicyEndpoints;
@@ -204,9 +205,43 @@ public class GetConfigTest {
         .containsExactly(PolarisAuthorizableOperation.GET_CATALOG_CONFIG);
   }
 
+  @Test
+  public void testRemoteSigningEndpointNotAdvertisedByDefault() {
+    ConfigResponse configResponse = getConfig(Map.of());
+    assertThat(configResponse.endpoints()).doesNotContain(Endpoint.V1_TABLE_REMOTE_SIGN);
+  }
+
+  @Test
+  public void testRemoteSigningEndpointAdvertisedWhenEnabledForRealm() {
+    ConfigResponse configResponse = getConfig(Map.of("REMOTE_SIGNING_ENABLED", true));
+    assertThat(configResponse.endpoints()).contains(Endpoint.V1_TABLE_REMOTE_SIGN);
+  }
+
+  @Test
+  public void testRemoteSigningEndpointAdvertisedWhenEnabledForCatalog() {
+    ConfigResponse configResponse =
+        getConfig(
+            Map.of(), Map.of(FeatureConfiguration.REMOTE_SIGNING_ENABLED.catalogConfig(), "true"));
+    assertThat(configResponse.endpoints()).contains(Endpoint.V1_TABLE_REMOTE_SIGN);
+  }
+
+  @Test
+  public void testRemoteSigningEndpointNotAdvertisedWhenDisabledForCatalog() {
+    ConfigResponse configResponse =
+        getConfig(
+            Map.of("REMOTE_SIGNING_ENABLED", true),
+            Map.of(FeatureConfiguration.REMOTE_SIGNING_ENABLED.catalogConfig(), "false"));
+    assertThat(configResponse.endpoints()).doesNotContain(Endpoint.V1_TABLE_REMOTE_SIGN);
+  }
+
   private static ConfigResponse getConfig(Map<String, Object> extraConfig) {
+    return getConfig(extraConfig, Map.of());
+  }
+
+  private static ConfigResponse getConfig(
+      Map<String, Object> extraConfig, Map<String, String> catalogProperties) {
     TestServices services = TestServices.builder().config(baseConfig(extraConfig)).build();
-    String catalogName = createCatalog(services);
+    String catalogName = createCatalog(services, catalogProperties);
 
     Response response =
         services
@@ -227,6 +262,11 @@ public class GetConfigTest {
   }
 
   private static String createCatalog(TestServices services) {
+    return createCatalog(services, Map.of());
+  }
+
+  private static String createCatalog(
+      TestServices services, Map<String, String> extraCatalogProperties) {
     FileStorageConfigInfo fileStorage =
         FileStorageConfigInfo.builder(StorageConfigInfo.StorageTypeEnum.FILE)
             .setAllowedLocations(List.of("file://"))
@@ -234,6 +274,7 @@ public class GetConfigTest {
     String catalogName = "test-catalog-" + UUID.randomUUID();
     CatalogProperties catalogProperties = new CatalogProperties("file:///tmp/path/to/data");
     catalogProperties.put("custom-property", "custom-value");
+    catalogProperties.putAll(extraCatalogProperties);
     Catalog catalog =
         PolarisCatalog.builder()
             .setType(Catalog.TypeEnum.INTERNAL)

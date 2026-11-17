@@ -35,6 +35,11 @@ dependencies {
   implementation("org.apache.iceberg:iceberg-api")
   implementation("org.apache.iceberg:iceberg-core")
 
+  // Only for the remote signing tests, which write and read data files: the modules running them
+  // add these at runtime, as they would replace the Parquet and ORC versions of Spark's tests
+  compileOnly("org.apache.iceberg:iceberg-data")
+  compileOnly("org.apache.iceberg:iceberg-parquet")
+
   implementation("org.apache.iceberg:iceberg-api:${libs.versions.iceberg.get()}:tests")
   implementation("org.apache.iceberg:iceberg-core:${libs.versions.iceberg.get()}:tests")
 

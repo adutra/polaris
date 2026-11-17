@@ -23,11 +23,13 @@ import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanContext;
 import jakarta.enterprise.context.RequestScoped;
 import jakarta.inject.Inject;
+import java.net.URI;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.iceberg.catalog.TableIdentifier;
+import org.apache.iceberg.exceptions.BadRequestException;
 import org.apache.polaris.core.StructuredLogKeys;
 import org.apache.polaris.core.auth.PolarisPrincipal;
 import org.apache.polaris.core.config.FeatureConfiguration;
@@ -39,9 +41,12 @@ import org.apache.polaris.core.persistence.PolarisResolvedPathWrapper;
 import org.apache.polaris.core.storage.CredentialVendingContext;
 import org.apache.polaris.core.storage.LocationGrant;
 import org.apache.polaris.core.storage.PolarisStorageActions;
+import org.apache.polaris.core.storage.PolarisStorageConfigurationInfo;
 import org.apache.polaris.core.storage.PolarisStorageIntegration;
 import org.apache.polaris.core.storage.PolarisStorageIntegrationProvider;
 import org.apache.polaris.core.storage.StorageAccessConfig;
+import org.apache.polaris.core.storage.StorageAccessProperty;
+import org.apache.polaris.core.storage.aws.AwsStorageConfigurationInfo;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -137,6 +142,52 @@ public class StorageAccessConfigProvider {
         List.of(new LocationGrant(locations, effectiveActions)),
         refreshCredentialsEndpoint,
         credentialVendingContext);
+  }
+
+  /**
+   * Returns the storage configuration properties that clients need in order to access the table's
+   * storage using remote signing. No credentials are vended.
+   *
+   * @throws BadRequestException if the table's storage does not support remote signing
+   */
+  public StorageAccessConfig getStorageAccessConfigForRemoteSigning(
+      @NonNull TableIdentifier tableIdentifier, @NonNull PolarisResolvedPathWrapper resolvedPath) {
+    LOGGER
+        .atDebug()
+        .addKeyValue(StructuredLogKeys.TABLE_IDENTIFIER, tableIdentifier)
+        .log("Fetching remote signing config for table");
+
+    PolarisStorageConfigurationInfo storageConfig =
+        PolarisStorageConfigurationInfo.findStorageConfigFromHierarchy(
+                resolvedPath.getRawFullPath())
+            .orElseThrow(() ->
+                new IllegalStateException(
+                    "Table entity has no storage configuration in its hierarchy"));
+
+    if (!(storageConfig instanceof AwsStorageConfigurationInfo awsConfig)) {
+      throw new BadRequestException(
+          "Remote signing is not supported for storage type: %s", storageConfig.getStorageType());
+    }
+
+    StorageAccessConfig.Builder accessConfig =
+        StorageAccessConfig.builder()
+            .supportsCredentialVending(false)
+            .put(StorageAccessProperty.AWS_REMOTE_SIGNING_ENABLED, Boolean.TRUE.toString());
+
+    if (awsConfig.getRegion() != null) {
+      accessConfig.put(StorageAccessProperty.CLIENT_REGION, awsConfig.getRegion());
+    }
+
+    URI endpointUri = awsConfig.getEndpointUri();
+    if (endpointUri != null) {
+      accessConfig.put(StorageAccessProperty.AWS_ENDPOINT, endpointUri.toString());
+    }
+
+    if (Boolean.TRUE.equals(awsConfig.getPathStyleAccess())) {
+      accessConfig.put(StorageAccessProperty.AWS_PATH_STYLE_ACCESS, Boolean.TRUE.toString());
+    }
+
+    return accessConfig.build();
   }
 
   private CredentialVendingContext buildCredentialVendingContext(

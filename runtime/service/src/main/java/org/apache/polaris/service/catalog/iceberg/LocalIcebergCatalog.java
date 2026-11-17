@@ -1560,6 +1560,34 @@ public class LocalIcebergCatalog extends BaseMetastoreViewCatalog
   }
 
   /**
+   * Validates, before objects of a table that does not exist are accessed, that none of its
+   * locations overlaps a table or namespace: the table may be staged, or dropped, and its locations
+   * may have been used by another table since they were validated.
+   */
+  void validateNoLocationOverlapForMissingTable(
+      TableIdentifier identifier,
+      Set<String> tableLocations,
+      PolarisResolvedPathWrapper resolvedNamespace) {
+    List<PolarisEntity> namespacePath = resolvedNamespace.getRawFullPath();
+    // Without an ID, the missing table overlaps any entity at its locations
+    PolarisEntity missingTable =
+        virtualTableEntity(
+            identifier, namespacePath, tableLocations.iterator().next(), namespacePath.getLast());
+    try {
+      validateNoLocationsOverlap(identifier, tableLocations, namespacePath, missingTable);
+    } catch (ForbiddenException e) {
+      LOGGER
+          .atError()
+          .addKeyValue(StructuredLogKeys.TABLE_IDENTIFIER, identifier)
+          .setCause(e)
+          .log("Location overlap validation failed for a table that does not exist");
+      throw new ForbiddenException(
+          "Table '%s' does not exist, and has a location that overlaps another table or namespace",
+          identifier);
+    }
+  }
+
+  /**
    * Creates a fake IcebergTableLikeEntity to check for overlap, since no real entity exists at the
    * location yet. If the table or view already exists, the fake entity carries its id, so that the
    * check does not conflict with the entity's own persisted location. When the leaf is not a

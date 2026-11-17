@@ -33,4 +33,5 @@ build:
 | `s3.path-style-access` | `Boolean` | config | Set to true when path-style addressing is required; emitted for S3-compatible stores, absent for native AWS S3 |
 | `client.region` | `String` | config | AWS region to use for S3 and STS requests |
 | `client.refresh-credentials-endpoint` | `String` | config | Catalog endpoint the client can call to refresh vended credentials before they expire |
+| `s3.remote-signing-enabled` | `Boolean` | config | Set to true when the client must use remote signing for S3 requests |
 

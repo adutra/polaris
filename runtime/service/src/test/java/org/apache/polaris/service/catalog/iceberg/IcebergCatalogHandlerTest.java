@@ -40,12 +40,14 @@ import static org.mockito.Mockito.withSettings;
 
 import jakarta.enterprise.inject.Instance;
 import java.time.Clock;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import org.apache.iceberg.BaseTable;
 import org.apache.iceberg.MetadataUpdate;
 import org.apache.iceberg.PartitionSpec;
@@ -59,6 +61,7 @@ import org.apache.iceberg.catalog.SupportsNamespaces;
 import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.catalog.ViewCatalog;
 import org.apache.iceberg.exceptions.BadRequestException;
+import org.apache.iceberg.exceptions.ForbiddenException;
 import org.apache.iceberg.exceptions.NoSuchNamespaceException;
 import org.apache.iceberg.exceptions.NoSuchTableException;
 import org.apache.iceberg.exceptions.NoSuchViewException;
@@ -82,7 +85,6 @@ import org.apache.polaris.core.collection.MutableAttributeMap;
 import org.apache.polaris.core.config.FeatureConfiguration;
 import org.apache.polaris.core.config.RealmConfig;
 import org.apache.polaris.core.context.CallContext;
-import org.apache.polaris.core.context.RealmContext;
 import org.apache.polaris.core.credentials.PolarisCredentialManager;
 import org.apache.polaris.core.entity.CatalogEntity;
 import org.apache.polaris.core.entity.PolarisBaseEntity;
@@ -100,6 +102,7 @@ import org.apache.polaris.core.persistence.resolver.ResolutionManifestFactory;
 import org.apache.polaris.core.persistence.resolver.ResolvedPathKey;
 import org.apache.polaris.core.persistence.resolver.ResolverFactory;
 import org.apache.polaris.core.storage.PolarisStorageActions;
+import org.apache.polaris.core.storage.RemoteSigningProperty;
 import org.apache.polaris.core.storage.StorageAccessConfig;
 import org.apache.polaris.service.catalog.AccessDelegationMode;
 import org.apache.polaris.service.catalog.AccessDelegationModeResolver;
@@ -109,10 +112,15 @@ import org.apache.polaris.service.config.ReservedProperties;
 import org.apache.polaris.service.idempotency.IdempotencyConfiguration;
 import org.apache.polaris.service.idempotency.IdempotencyRequestContext;
 import org.apache.polaris.service.metrics.IcebergMetricsReporter;
+import org.apache.polaris.service.storage.sign.RemoteSigningConfiguration;
+import org.apache.polaris.service.storage.sign.RemoteSigningContext;
+import org.apache.polaris.service.storage.sign.RemoteSigningDecisionCache;
+import org.apache.polaris.service.storage.sign.RemoteSigningTokenService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 
 class IcebergCatalogHandlerTest {
@@ -131,6 +139,11 @@ class IcebergCatalogHandlerTest {
   private final LocalCatalogFactory localCatalogFactory = mock(LocalCatalogFactory.class);
   private final AccessDelegationModeResolver accessDelegationModeResolver =
       mock(AccessDelegationModeResolver.class);
+  private final RemoteSigningTokenService remoteSigningTokenService =
+      mock(RemoteSigningTokenService.class);
+  private final RemoteSigningConfiguration remoteSigningConfiguration =
+      mock(RemoteSigningConfiguration.class);
+  private final CatalogPrefixParser prefixParser = mock(CatalogPrefixParser.class);
   private final StorageAccessConfigProvider storageAccessConfigProvider =
       mock(StorageAccessConfigProvider.class);
   private final PolarisAuthorizer authorizer = mock(PolarisAuthorizer.class);
@@ -138,6 +151,8 @@ class IcebergCatalogHandlerTest {
 
   @BeforeEach
   void setUp() {
+    when(remoteSigningConfiguration.decisionCacheTtl()).thenReturn(Duration.ZERO);
+    when(prefixParser.catalogNameToPrefix(CATALOG_NAME)).thenReturn(CATALOG_NAME);
     StorageAccessConfig storageAccessConfig =
         StorageAccessConfig.builder()
             .putCredential("fake.access.key", "AKIAFAKE")
@@ -150,7 +165,7 @@ class IcebergCatalogHandlerTest {
   @SuppressWarnings({"unchecked"})
   private IcebergCatalogHandler newHandler() {
     when(callContext.getRealmConfig()).thenReturn(realmConfig);
-    when(callContext.getRealmContext()).thenReturn(mock(RealmContext.class));
+    when(callContext.getRealmContext()).thenReturn(() -> "test-realm");
     // The list methods read this flag unconditionally; an unstubbed Boolean would unbox to an NPE.
     when(realmConfig.getConfig(ENABLE_ENTITY_LEVEL_LIST_FILTERING, catalogEntity))
         .thenReturn(false);
@@ -191,7 +206,7 @@ class IcebergCatalogHandlerTest {
         .diagnostics(mock(PolarisDiagnostics.class))
         .credentialManager(mock(PolarisCredentialManager.class))
         .federatedCatalogFactories(mock(Instance.class))
-        .prefixParser(mock(CatalogPrefixParser.class))
+        .prefixParser(prefixParser)
         .resolverFactory(mock(ResolverFactory.class))
         .localCatalogFactory(localCatalogFactory)
         .reservedProperties(mock(ReservedProperties.class))
@@ -202,6 +217,10 @@ class IcebergCatalogHandlerTest {
         .clock(mock(Clock.class))
         .accessDelegationModeResolver(accessDelegationModeResolver)
         .idempotencyRequestContext(idempotencyRequestContext)
+        .remoteSigners(mock(Instance.class))
+        .storageLocationTranslators(mock(Instance.class))
+        .remoteSigningTokenService(remoteSigningTokenService)
+        .remoteSigningDecisionCache(new RemoteSigningDecisionCache(remoteSigningConfiguration))
         .build();
   }
 
@@ -253,25 +272,26 @@ class IcebergCatalogHandlerTest {
 
   /**
    * When the resolver degrades a both-modes request to {@link AccessDelegationMode#REMOTE_SIGNING}
-   * (credential vending is not possible for the catalog) and remote signing is not implemented, the
-   * request fails fast with a message that tells the client what to do, matching how a
-   * vended-credentials-only request already behaves in that situation.
+   * (credential vending is not possible for the catalog) and remote signing is not enabled for the
+   * catalog, the request fails with a message that tells the client how to enable it.
    */
   @Test
-  void bothModesRequestedAndResolverDegradesToRemoteSigningFailsWithActionableMessage() {
+  void bothModesRequestedAndResolverDegradesToRemoteSigningFailsWhenRemoteSigningDisabled() {
     mockRegisterTableCatalog(false);
     EnumSet<AccessDelegationMode> bothModes = EnumSet.of(VENDED_CREDENTIALS, REMOTE_SIGNING);
     when(accessDelegationModeResolver.resolve(eq(bothModes), any()))
         .thenReturn(Optional.of(REMOTE_SIGNING));
+    when(realmConfig.getConfig(FeatureConfiguration.REMOTE_SIGNING_ENABLED, catalogEntity))
+        .thenReturn(false);
 
     @SuppressWarnings("resource")
     IcebergCatalogHandler handler = newHandler();
 
     assertThatThrownBy(() ->
             handler.registerTable(NS1, registerTableRequest(false), bothModes, Optional.empty()))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("This catalog cannot vend credentials or sign requests")
-        .hasMessageContaining("request without X-Iceberg-Access-Delegation");
+        .isInstanceOf(ForbiddenException.class)
+        .hasMessageContaining("Remote signing is not enabled for this catalog")
+        .hasMessageContaining(FeatureConfiguration.REMOTE_SIGNING_ENABLED.catalogConfig());
   }
 
   /**
@@ -322,11 +342,13 @@ class IcebergCatalogHandlerTest {
   }
 
   @Test
-  void remoteSigningRequestedAloneFailsWithActionableMessage() {
+  void remoteSigningRequestedAloneFailsWhenRemoteSigningDisabled() {
     mockRegisterTableCatalog(false);
     EnumSet<AccessDelegationMode> remoteSigningOnly = EnumSet.of(REMOTE_SIGNING);
     when(accessDelegationModeResolver.resolve(eq(remoteSigningOnly), any()))
         .thenReturn(Optional.of(REMOTE_SIGNING));
+    when(realmConfig.getConfig(FeatureConfiguration.REMOTE_SIGNING_ENABLED, catalogEntity))
+        .thenReturn(false);
 
     @SuppressWarnings("resource")
     IcebergCatalogHandler handler = newHandler();
@@ -334,8 +356,100 @@ class IcebergCatalogHandlerTest {
     assertThatThrownBy(() ->
             handler.registerTable(
                 NS1, registerTableRequest(false), remoteSigningOnly, Optional.empty()))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("This catalog cannot vend credentials or sign requests");
+        .isInstanceOf(ForbiddenException.class)
+        .hasMessageContaining("Remote signing is not enabled for this catalog");
+  }
+
+  @Test
+  void remoteSigningRequestedOnExternalCatalogFails() {
+    mockRegisterTableCatalog(false);
+    EnumSet<AccessDelegationMode> remoteSigningOnly = EnumSet.of(REMOTE_SIGNING);
+    when(accessDelegationModeResolver.resolve(eq(remoteSigningOnly), any()))
+        .thenReturn(Optional.of(REMOTE_SIGNING));
+    when(catalogEntity.isExternal()).thenReturn(true);
+
+    @SuppressWarnings("resource")
+    IcebergCatalogHandler handler = newHandler();
+
+    assertThatThrownBy(() ->
+            handler.registerTable(
+                NS1, registerTableRequest(false), remoteSigningOnly, Optional.empty()))
+        .isInstanceOf(ForbiddenException.class)
+        .hasMessageContaining("Remote signing is not enabled for external catalogs");
+  }
+
+  @Test
+  void remoteSigningIssuesToken() {
+    mockRegisterTableCatalog(false);
+    EnumSet<AccessDelegationMode> remoteSigningOnly = EnumSet.of(REMOTE_SIGNING);
+    when(accessDelegationModeResolver.resolve(eq(remoteSigningOnly), any()))
+        .thenReturn(Optional.of(REMOTE_SIGNING));
+    when(realmConfig.getConfig(FeatureConfiguration.REMOTE_SIGNING_ENABLED, catalogEntity))
+        .thenReturn(true);
+    when(storageAccessConfigProvider.getStorageAccessConfigForRemoteSigning(any(), any()))
+        .thenReturn(StorageAccessConfig.builder().supportsCredentialVending(false).build());
+    when(remoteSigningTokenService.issueToken(any(), any())).thenReturn("context-token");
+
+    @SuppressWarnings("resource")
+    IcebergCatalogHandler handler = newHandler();
+
+    LoadTableResponse response =
+        handler.registerTable(
+            NS1, registerTableRequest(false), remoteSigningOnly, Optional.empty());
+
+    ArgumentCaptor<RemoteSigningContext> contextCaptor =
+        ArgumentCaptor.forClass(RemoteSigningContext.class);
+    verify(remoteSigningTokenService).issueToken(contextCaptor.capture(), any());
+    RemoteSigningContext context = contextCaptor.getValue();
+    assertThat(context.realmId()).isEqualTo("test-realm");
+    assertThat(context.catalogName()).isEqualTo(CATALOG_NAME);
+    assertThat(context.tableIdentifier()).isEqualTo(TABLE2);
+    assertThat(context.loadId()).isNotBlank();
+    assertThat(context.locations()).isNotEmpty();
+    assertThat(context.stagedCreate()).isFalse();
+    assertThat(response.remoteSigningConfig().properties())
+        .containsExactly(Map.entry(RemoteSigningProperty.TOKEN.propertyName(), "context-token"));
+    // For clients older than Iceberg 1.12 and PyIceberg; "signer.endpoint" would override the
+    // endpoint derived by later clients
+    assertThat(response.config())
+        .containsEntry("s3.signer.endpoint", "v1/test/namespaces/ns1/tables/table2/sign")
+        .containsEntry("s3.signer", "S3V4RestSigner")
+        .doesNotContainKey("signer.endpoint");
+  }
+
+  @ParameterizedTest
+  @ValueSource(ints = {9, 128, 129})
+  void remoteSigningTokenRecordsRequestId(int requestIdLength) {
+    mockRegisterTableCatalog(false);
+    EnumSet<AccessDelegationMode> remoteSigningOnly = EnumSet.of(REMOTE_SIGNING);
+    when(accessDelegationModeResolver.resolve(eq(remoteSigningOnly), any()))
+        .thenReturn(Optional.of(REMOTE_SIGNING));
+    when(realmConfig.getConfig(FeatureConfiguration.REMOTE_SIGNING_ENABLED, catalogEntity))
+        .thenReturn(true);
+    when(storageAccessConfigProvider.getStorageAccessConfigForRemoteSigning(any(), any()))
+        .thenReturn(StorageAccessConfig.builder().supportsCredentialVending(false).build());
+    when(remoteSigningTokenService.issueToken(any(), any())).thenReturn("context-token");
+    String requestId = "r".repeat(requestIdLength);
+
+    @SuppressWarnings("resource")
+    IcebergCatalogHandler handler =
+        ImmutableIcebergCatalogHandler.builder()
+            .from(newHandler())
+            .requestIdSupplier(() -> requestId)
+            .build();
+
+    handler.registerTable(NS1, registerTableRequest(false), remoteSigningOnly, Optional.empty());
+
+    ArgumentCaptor<RemoteSigningContext> contextCaptor =
+        ArgumentCaptor.forClass(RemoteSigningContext.class);
+    verify(remoteSigningTokenService).issueToken(contextCaptor.capture(), any());
+    String loadId = contextCaptor.getValue().loadId();
+    if (requestIdLength <= 128) {
+      assertThat(loadId).isEqualTo(requestId);
+    } else {
+      // Too long: replaced by a random ID
+      assertThat(UUID.fromString(loadId)).isNotNull();
+    }
   }
 
   @Test
