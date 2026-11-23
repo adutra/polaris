@@ -403,6 +403,10 @@ public class LocalIcebergCatalog extends BaseMetastoreViewCatalog
           identifier, PolarisEntitySubType.ICEBERG_VIEW);
     }
 
+    if (existingEntity == null) {
+      validateNoNamespaceWithSameName(identifier);
+    }
+
     boolean tableExists =
         existingEntity != null && existingEntity.getSubType() == PolarisEntitySubType.ICEBERG_TABLE;
     if (!overwrite && tableExists) {
@@ -749,6 +753,29 @@ public class LocalIcebergCatalog extends BaseMetastoreViewCatalog
     createNamespaceInternal(namespace, metadata, resolvedParent);
   }
 
+  /**
+   * Rejects the creation of a table-like entity whose name is already used by a namespace in the
+   * same parent namespace: a name must map to at most one entity.
+   */
+  private void validateNoNamespaceWithSameName(TableIdentifier identifier) {
+    PolarisResolvedPathWrapper resolvedParent =
+        resolvedEntityView.getResolvedPath(ResolvedPathKey.ofNamespace(identifier.namespace()));
+    if (resolvedParent == null) {
+      return;
+    }
+    EntityResult existingNamespace =
+        getMetaStoreManager()
+            .readEntityByName(
+                getCurrentPolarisContext(),
+                PolarisEntity.toCoreList(resolvedParent.getRawFullPath()),
+                PolarisEntityType.NAMESPACE,
+                PolarisEntitySubType.ANY_SUBTYPE,
+                identifier.name());
+    if (existingNamespace.isSuccess()) {
+      throw new AlreadyExistsException("Namespace with same name already exists: %s", identifier);
+    }
+  }
+
   private void createNamespaceInternal(
       Namespace namespace,
       Map<String, String> metadata,
@@ -780,6 +807,19 @@ public class LocalIcebergCatalog extends BaseMetastoreViewCatalog
     if (existingNamespace.isSuccess()) {
       throw new AlreadyExistsException(
           "Cannot create namespace %s. Namespace already exists", namespace);
+    }
+    EntityResult existingTableLike =
+        getMetaStoreManager()
+            .readEntityByName(
+                getCurrentPolarisContext(),
+                PolarisEntity.toCoreList(resolvedParent.getRawFullPath()),
+                PolarisEntityType.TABLE_LIKE,
+                PolarisEntitySubType.ANY_SUBTYPE,
+                entity.getName());
+    if (existingTableLike.isSuccess()) {
+      throw new AlreadyExistsException(
+          "Cannot create namespace %s. A table or view with the same name already exists",
+          namespace);
     }
     if (!realmConfig.getConfig(FeatureConfiguration.ALLOW_NAMESPACE_LOCATION_OVERLAP)) {
       LOGGER.debug("Validating no overlap for {} with sibling tables or namespaces", namespace);
@@ -1203,6 +1243,8 @@ public class LocalIcebergCatalog extends BaseMetastoreViewCatalog
     if (tableExists(identifier)) {
       throw new AlreadyExistsException("Table with same name already exists: %s", identifier);
     }
+
+    validateNoNamespaceWithSameName(identifier);
 
     String locationDir = metadataFileLocation.substring(0, lastSlashIndex);
 
@@ -2079,6 +2121,9 @@ public class LocalIcebergCatalog extends BaseMetastoreViewCatalog
             "Cannot create table '%s'. Namespace does not exist: '%s'",
             tableIdentifier, tableIdentifier.namespace());
       }
+      if (null == base) {
+        validateNoNamespaceWithSameName(tableIdentifier);
+      }
 
       // Resolve the table entity once for the whole commit attempt: same-name conflict check,
       // storage validation, and the pre-write conflict check below all share this resolution.
@@ -2583,6 +2628,9 @@ public class LocalIcebergCatalog extends BaseMetastoreViewCatalog
             "Cannot create view '%s'. Namespace does not exist: '%s'",
             identifier, identifier.namespace());
       }
+      if (null == base) {
+        validateNoNamespaceWithSameName(identifier);
+      }
 
       PolarisResolvedPathWrapper resolvedTable =
           resolvedEntityView.getPassthroughResolvedPath(
@@ -2974,6 +3022,7 @@ public class LocalIcebergCatalog extends BaseMetastoreViewCatalog
         throw new NoSuchTableException("Cannot rename %s to %s. Table does not exist", from, to);
       }
     }
+    validateNoNamespaceWithSameName(to);
     List<PolarisEntity> catalogPath = resolvedEntities.getRawParentPath();
     PolarisEntity leafEntity = resolvedEntities.getRawLeafEntity();
     final IcebergTableLikeEntity toEntity;

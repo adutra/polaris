@@ -62,6 +62,7 @@ import org.apache.iceberg.catalog.CatalogTests;
 import org.apache.iceberg.catalog.Namespace;
 import org.apache.iceberg.catalog.TableCommit;
 import org.apache.iceberg.catalog.TableIdentifier;
+import org.apache.iceberg.exceptions.AlreadyExistsException;
 import org.apache.iceberg.exceptions.BadRequestException;
 import org.apache.iceberg.exceptions.CommitFailedException;
 import org.apache.iceberg.exceptions.ForbiddenException;
@@ -132,6 +133,7 @@ import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -2065,6 +2067,78 @@ public abstract class PolarisRestCatalogIntegrationBase extends CatalogTests<RES
                 Map.of("cat", currentCatalogName, "ns", namespace.toString(), "table", tableName))
             .head()) {
       assertThat(response).returns(Response.Status.OK.getStatusCode(), Response::getStatus);
+    }
+  }
+
+  public enum EntityKind {
+    TABLE,
+    VIEW,
+    NAMESPACE,
+    GENERIC_TABLE
+  }
+
+  private void createEntity(EntityKind kind, Namespace parent, String name) {
+    TableIdentifier id = TableIdentifier.of(parent, name);
+    switch (kind) {
+      case TABLE -> restCatalog.buildTable(id, SCHEMA).create();
+      case VIEW ->
+          restCatalog
+              .buildView(id)
+              .withSchema(SCHEMA)
+              .withDefaultNamespace(parent)
+              .withQuery("spark", VIEW_QUERY)
+              .create();
+      case NAMESPACE -> restCatalog.createNamespace(Namespace.of(append(parent.levels(), name)));
+      case GENERIC_TABLE -> {
+        String ns =
+            NamespaceUtils.joinNamespace(parent, NamespaceUtils.DEFAULT_NAMESPACE_SEPARATOR);
+        try (Response response =
+            genericTableApi
+                .request(
+                    "polaris/v1/{cat}/namespaces/{ns}/generic-tables/",
+                    Map.of("cat", currentCatalogName, "ns", ns))
+                .post(
+                    Entity.json(
+                        CreateGenericTableRequest.builder()
+                            .setName(name)
+                            .setFormat("format")
+                            .build()))) {
+          if (response.getStatus() == Response.Status.CONFLICT.getStatusCode()) {
+            throw new AlreadyExistsException("Entity already exists: %s", name);
+          }
+          assertThat(response.getStatus()).isEqualTo(Response.Status.OK.getStatusCode());
+        }
+      }
+    }
+  }
+
+  private static String[] append(String[] levels, String name) {
+    String[] result = Arrays.copyOf(levels, levels.length + 1);
+    result[levels.length] = name;
+    return result;
+  }
+
+  static Stream<Arguments> entityKindPairs() {
+    return Arrays.stream(EntityKind.values())
+        .flatMap(
+            first -> Arrays.stream(EntityKind.values()).map(second -> Arguments.of(first, second)));
+  }
+
+  /** Within a namespace, a name must map to at most one entity of any kind. */
+  @ParameterizedTest
+  @MethodSource("entityKindPairs")
+  public void testEntityNameOverlap(EntityKind first, EntityKind second) {
+    Namespace parent = Namespace.of("ns1");
+    restCatalog.createNamespace(parent);
+
+    try {
+      createEntity(first, parent, "clash");
+      assertThatThrownBy(() -> createEntity(second, parent, "clash"))
+          .isInstanceOf(AlreadyExistsException.class)
+          .hasMessageContaining("already exists");
+    } finally {
+      // The catalog cleanup does not remove generic tables
+      genericTableApi.purge(currentCatalogName, parent);
     }
   }
 

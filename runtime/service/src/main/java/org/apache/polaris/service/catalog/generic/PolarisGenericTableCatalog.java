@@ -30,6 +30,7 @@ import java.util.Map;
 import java.util.Set;
 import org.apache.iceberg.catalog.Namespace;
 import org.apache.iceberg.catalog.TableIdentifier;
+import org.apache.iceberg.exceptions.AlreadyExistsException;
 import org.apache.polaris.core.auth.PolarisPrincipal;
 import org.apache.polaris.core.catalog.GenericTableCatalog;
 import org.apache.polaris.core.catalog.PolarisCatalogHelpers;
@@ -110,6 +111,17 @@ public class PolarisGenericTableCatalog implements GenericTableCatalog {
             ResolvedPathKey.ofTableLike(tableIdentifier), PolarisEntitySubType.ANY_SUBTYPE);
     PolarisEntity entity = resolvedEntities == null ? null : resolvedEntities.getRawLeafEntity();
     if (null == entity) {
+      EntityResult existingNamespace =
+          this.metaStoreManager.readEntityByName(
+              this.callContext.getPolarisCallContext(),
+              PolarisEntity.toCoreList(catalogPath),
+              PolarisEntityType.NAMESPACE,
+              PolarisEntitySubType.ANY_SUBTYPE,
+              tableIdentifier.name());
+      if (existingNamespace.isSuccess()) {
+        throw new AlreadyExistsException(
+            "Namespace with same name already exists: %s", tableIdentifier);
+      }
       boolean hasLocation = baseLocation != null && !baseLocation.isEmpty();
       if (hasLocation) {
         CatalogUtils.validateLocationsForTableLike(
